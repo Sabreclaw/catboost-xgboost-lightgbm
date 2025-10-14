@@ -1,89 +1,16 @@
 import os
-import pickle
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-
-def resolve_model_path() -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """
-    Determine which model file to load based on LOAD_MODEL env var,
-    assuming a fixed 'models' directory at the repository root.
-
-    Returns: (selected_key, model_path, error)
-      - selected_key: 'catboost' | 'lgbm' | 'xgboost' | None
-      - model_path: string path if resolved
-      - error: error string if could not resolve
-    """
-    # repo root is the parent of the 'app' directory containing this file
-    repo_root = Path(__file__).resolve().parent.parent
-    models_dir = repo_root / "models"
-
-    key = (os.getenv("LOAD_MODEL") or "").strip().lower()
-    mapping = {
-        "catboost": "Catboost_model.pkl",
-        "lgbm": "LGBM_model.pkl",
-        "xgboost": "XGBoost_model.pkl",
-    }
-    if not key:
-        return None, None, "LOAD_MODEL is not set. Set it to one of: catboost, lgbm, xgboost."
-    if key not in mapping:
-        return None, None, f"Unsupported LOAD_MODEL='{key}'. Use one of: catboost, lgbm, xgboost."
-
-    candidate = models_dir / mapping[key]
-    if not candidate.exists():
-        return key, None, f"Model file '{candidate}' not found. Place the file in the repository 'models' folder."
-    return key, str(candidate.resolve()), None
-
-
-def load_pickle(path: str) -> Any:
-    with open(path, "rb") as f:
-        return pickle.load(f)
-
-
-def to_dataframe(payload: Any) -> pd.DataFrame:
-    """
-    Convert various JSON payload shapes into a pandas DataFrame.
-
-    Supported shapes:
-    - {"instances": [ {feature: value, ...}, ... ]}
-    - {"inputs": [ ... ]}
-    - {"columns": [...], "data": [[...], [...]]}
-    - [ {feature: value, ...}, ... ]
-    - {feature: value, ...}
-    - [[...], [...]] with optional {"columns": [...]} wrapping
-    """
-    data = payload
-    if isinstance(data, dict):
-        # sklearn-like table: {"columns": [...], "data": [[...]]}
-        if set(data.keys()) >= {"columns", "data"}:
-            columns = data["columns"]
-            rows = data["data"]
-            return pd.DataFrame(rows, columns=columns)
-        # common wrapper keys
-        if "instances" in data:
-            data = data["instances"]
-        elif "inputs" in data:
-            data = data["inputs"]
-        else:
-            # assume it's a single row dict
-            return pd.DataFrame([data])
-
-    # Now data is list-like (list of dicts or list of lists)
-    if isinstance(data, list) and data:
-        first = data[0]
-        if isinstance(first, dict):
-            return pd.DataFrame(data)
-        # list of lists — build a DataFrame without column names
-        return pd.DataFrame(data)
-
-    # Empty or unrecognized — return empty DataFrame to let caller validate
-    return pd.DataFrame()
+from .model_utils import resolve_model_path, load_pickle
+from .data_utils import to_dataframe
+from .energy import EnergyProfiler
 
 # Configure logging level from env: LOG_LEVEL or DEBUG=1
 _LOG_LEVEL = os.getenv("LOG_LEVEL")
@@ -96,6 +23,12 @@ logging.basicConfig(
 logger = logging.getLogger("model-server")
 
 app = FastAPI(title="Model Inference Server", version="1.0.0")
+
+
+
+
+# global profiler instance
+energy_profiler = EnergyProfiler()
 
 
 @app.on_event("startup")
@@ -218,6 +151,38 @@ async def invocation(request: Request) -> JSONResponse:
     except Exception as e:
         logger.exception("invocation: inference failed")
         raise HTTPException(status_code=500, detail=f"Inference failed: {e}")
+
+
+@app.post("/energy-measurement/start")
+async def energy_start(request: Request) -> JSONResponse:
+    # optional body: {"model": "name-to-use"}
+    model_name = None
+    try:
+        if request.headers.get("content-length") and int(request.headers.get("content-length", 0)) > 0:
+            body = await request.json()
+            if isinstance(body, dict):
+                model_name = body.get("model")
+    except Exception:
+        # ignore body parse errors; treat as no-override
+        logger.debug("energy start: ignoring invalid JSON body", exc_info=True)
+    try:
+        default_name = app.state.model_key or os.getenv("LOAD_MODEL")
+        effective_name = model_name or default_name
+        info = energy_profiler.start(effective_name)
+        return JSONResponse({"status": "started", **info})
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="energibridge binary not found on PATH")
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@app.post("/energy-measurement/stop")
+async def energy_stop() -> JSONResponse:
+    try:
+        info = energy_profiler.stop()
+        return JSONResponse({"status": "stopped", **info})
+    except RuntimeError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 @app.get("/")

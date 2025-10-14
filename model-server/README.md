@@ -54,7 +54,7 @@ model-server/
 ```
 
 ## Setup
-### 1) Create and activate a virtual environment
+### 1) Create and activate a virtual environment (from repository root)
 macOS/Linux (bash/zsh):
 ```bash
 python3 -m venv .venv
@@ -67,7 +67,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-### 2) Install dependencies
+### 2) Install dependencies (from repository root)
 ```bash
 pip install -r requirements.txt
 ```

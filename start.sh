@@ -16,7 +16,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$SCRIPT_DIR"
 MODEL_DIR="$REPO_ROOT/model-server"
-VENV_DIR="$MODEL_DIR/.venv"
+VENV_DIR="$REPO_ROOT/.venv"
 TEST_DIR="$REPO_ROOT/test-server"
 
 usage() {
@@ -94,8 +94,8 @@ serve_mode() {
   if [[ -d "$VENV_DIR" ]]; then
     echo "Virtual environment already exists at: $VENV_DIR"
   else
-    if confirm "Create virtual environment at model-server/.venv?" default_y; then
-      (cd "$MODEL_DIR" && python3 -m venv .venv)
+    if confirm "Create virtual environment at ./.venv?" default_y; then
+      (cd "$REPO_ROOT" && python3 -m venv .venv)
       echo "Created venv at $VENV_DIR"
     else
       echo "Skipping venv creation (will use system Python)"
@@ -113,11 +113,45 @@ serve_mode() {
     PIPBIN="pip3"
   fi
 
-  # Step 3: Install model-server requirements
-  if confirm "Install model-server requirements (pip install -r model-server/requirements.txt)?" default_y; then
-    "$PIPBIN" install -r "$MODEL_DIR/requirements.txt"
+  # Step 3: Install root requirements (auto-skip if already satisfied in current Python env)
+  REQ_FILE="$REPO_ROOT/requirements.txt"
+  MISSING_PKGS="$("$PYBIN" - "$REQ_FILE" <<'PY'
+import sys, re
+try:
+    from importlib import metadata
+except ImportError:  # pragma: no cover
+    import importlib_metadata as metadata  # type: ignore
+path = sys.argv[1]
+missing = []
+with open(path, 'r') as f:
+    for line in f:
+        s = line.strip()
+        if not s or s.startswith('#') or s.startswith('-r ') or s.startswith('--requirement'):
+            continue
+        m = re.match(r'^([A-Za-z0-9_.-]+)', s)
+        if not m:
+            continue
+        name = m.group(1)
+        try:
+            metadata.version(name)
+        except metadata.PackageNotFoundError:
+            missing.append(name)
+print(",".join(missing))
+PY
+)"
+  if [[ -z "$MISSING_PKGS" ]]; then
+    echo "All requirements already present in the current environment. Skipping dependency installation."
   else
-    echo "Skipping dependency installation"
+    if [[ -d "$VENV_DIR" ]]; then
+      echo "The following packages are missing in $VENV_DIR: $MISSING_PKGS"
+    else
+      echo "The following packages are missing: $MISSING_PKGS"
+    fi
+    if confirm "Install project requirements (pip install -r requirements.txt)?" default_y; then
+      "$PIPBIN" install -r "$REQ_FILE"
+    else
+      echo "Skipping dependency installation"
+    fi
   fi
 
   # Step 4: Choose model key
@@ -143,6 +177,27 @@ serve_mode() {
     DEBUG_FLAGS="--log-level debug"
   fi
 
+  # Preflight: Verify model file exists for selected MODEL_KEY (auto-run setup if missing)
+  local MODEL_FILE=""
+  case "${MODEL_KEY,,}" in
+    catboost) MODEL_FILE="Catboost_model.pkl" ;;
+    lgbm) MODEL_FILE="LGBM_model.pkl" ;;
+    xgboost) MODEL_FILE="XGBoost_model.pkl" ;;
+    *) echo "ERROR: Unsupported model key: $MODEL_KEY (use catboost|lgbm|xgboost)" >&2; exit 1 ;;
+  esac
+  local MODEL_PATH="$MODEL_DIR/models/$MODEL_FILE"
+  if [[ ! -f "$MODEL_PATH" ]]; then
+    echo "Model file not found: $MODEL_PATH" >&2
+    echo "Attempting to run setup.sh to extract assets..." >&2
+    (cd "$REPO_ROOT" && bash ./setup.sh)
+  fi
+  # Re-check after setup
+  if [[ ! -f "$MODEL_PATH" ]]; then
+    echo "ERROR: Model file still not found: $MODEL_PATH" >&2
+    echo "Hint: ensure models.zip is present at repo root or place the correct file in model-server/models/." >&2
+    exit 1
+  fi
+
   echo "Starting server with: LOAD_MODEL=$MODEL_KEY host=$HOST port=$PORT"
   export LOAD_MODEL="$MODEL_KEY"
   cd "$MODEL_DIR"
@@ -160,11 +215,11 @@ ensure_locust() {
     fi
   fi
   echo "Locust is not available."
-  if confirm "Install test-server requirements (pip install -r test-server/requirements.txt)?" default_y; then
+  if confirm "Install project requirements (pip install -r requirements.txt)?" default_y; then
     local PIPBIN="pip3"
     if command -v pip >/dev/null 2>&1; then PIPBIN="pip"; fi
     # If venv active, pip will install there
-    $PIPBIN install -r "$TEST_DIR/requirements.txt"
+    $PIPBIN install -r "$REPO_ROOT/requirements.txt"
   else
     echo "Skipping installation; test mode may fail if Locust is missing."
   fi
@@ -203,6 +258,45 @@ test_mode() {
 
   if ! [[ -f "$TEST_DIR/run_locust_headless.sh" ]]; then
     echo "ERROR: $TEST_DIR/run_locust_headless.sh not found." >&2
+    exit 1
+  fi
+
+  # Preflight: Ensure test file exists (auto-run setup if missing)
+  X_DEFAULT_PATH="$TEST_DIR/test_files/X_test.csv"
+  X_PATH="$X_DEFAULT_PATH"
+  if [[ -f "$TEST_DIR/config.json" ]]; then
+    CFG_X_PATH=$(python3 - "$TEST_DIR/config.json" <<'PY'
+import json, os, sys
+cfg_path = sys.argv[1]
+try:
+    with open(cfg_path, 'r') as f:
+        cfg = json.load(f)
+    x = None
+    tf = cfg.get('test_files')
+    if isinstance(tf, dict):
+        x = tf.get('x_test_path')
+    if x:
+        if not os.path.isabs(x):
+            x = os.path.normpath(os.path.join(os.path.dirname(cfg_path), x))
+        print(x)
+except Exception:
+    pass
+PY
+)
+    if [[ -n "${CFG_X_PATH:-}" ]]; then
+      X_PATH="$CFG_X_PATH"
+    fi
+  fi
+
+  if [[ ! -f "$X_PATH" ]]; then
+    echo "Test file not found: $X_PATH" >&2
+    echo "Attempting to run setup.sh to extract test files..." >&2
+    (cd "$REPO_ROOT" && bash ./setup.sh)
+  fi
+  # Re-check after setup
+  if [[ ! -f "$X_PATH" ]]; then
+    echo "ERROR: Test file still not found: $X_PATH" >&2
+    echo "Hint: ensure test_files.zip is present at repo root or place X_test.csv under test-server/test_files/." >&2
     exit 1
   fi
 

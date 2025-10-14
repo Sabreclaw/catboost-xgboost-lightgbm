@@ -4,13 +4,13 @@ A compact project to serve and test gradient boosting models (CatBoost, LightGBM
 
 ## Index
 - [Overview](#overview)
+- [Prerequisites](#prerequisites)
 - [Repository structure](#repository-structure)
 - [Flow diagram](#flow-diagram)
 - [Clone (with submodules)](#clone-with-submodules)
 - [Large files (Git LFS)](#large-files-git-lfs)
 - [Asset setup (zip)](#asset-setup-zip)
 - [Quick start (serve and test)](#quick-start-serve-and-test)
-- [Experiment Runner example](#experiment-runner-example)
 - [References](#references)
 
 ## Overview
@@ -22,6 +22,12 @@ This repository contains:
 For component-specific details, see:
 - Model server: [model-server/README.md](model-server/README.md)
 - Load testing: [test-server/README.md](test-server/README.md)
+
+## Prerequisites
+Before running the server or tests, ensure the following are installed on your system:
+- Energibridge (required for energy measurement): https://github.com/tdurieux/EnergiBridge
+- Python 3
+- Git LFS
 
 ## Repository structure
 ```
@@ -182,7 +188,7 @@ After extraction, it is possible to:
 ## Quick start (serve and test)
 A helper script is available at the repository root to streamline serving the model or running load tests. It uses interactive prompts allowing confirmation or skipping of each step.
 
-Serve the FastAPI model server (creates model-server/.venv if selected, installs dependencies if selected, and starts uvicorn):
+Serve the FastAPI model server (creates ./.venv at the repository root if selected, installs dependencies if selected, and starts uvicorn):
 - With prompts and defaults:
 ```bash
 bash start.sh serve
@@ -192,8 +198,8 @@ bash start.sh serve
 bash start.sh serve --host 127.0.0.1 --port 8000 --model lgbm
 ```
 - Prompts include:
-  - Create model-server/.venv? (skip to use system Python)
-  - Install dependencies from model-server/requirements.txt?
+  - Create ./.venv at repository root? (skip to use system Python)
+  - Install dependencies from ./requirements.txt?
   - Choose LOAD_MODEL (catboost/lgbm/xgboost)
   - Choose host/port
   - Enable debug logs? (sets LOG_LEVEL=DEBUG and passes --log-level debug to uvicorn)
@@ -206,50 +212,15 @@ Example:
 ```bash
 bash start.sh test http://localhost:8000 200 20 2m DEBUG
 ```
-- If Locust is not installed, the script can install it via:
-```bash
-pip install -r test-server/requirements.txt
-```
+
 - It runs test-server/run_locust_headless.sh with the chosen parameters.
 
 Notes
-- The script defaults to using a virtual environment at model-server/.venv for both serving and (if available) testing. If that venv does not exist or venv creation is skipped, the system Python/pip will be used.
+- The script defaults to using a virtual environment at ./.venv (repository root) for both serving and (if available) testing. If that venv does not exist or venv creation is skipped, the system Python/pip will be used.
 - For model serving details and environment variables, see model-server/README.md.
 - For load testing details and configuration, see test-server/README.md.
 
-## Experiment Runner example
-Since experiment-runner is included as a git submodule, the example config is provided as a patch that can be applied to the submodule (to avoid directly modifying vendor code). Apply the patch once, then run the example.
-
-- Apply the example patch (from repository root):
-```bash
-bash apply_er_patch.sh
-```
-This creates experiment-runner/examples/model-server-run/ with RunnerConfig.py and README.md inside the submodule.
-
-- Example config (after patching): experiment-runner/examples/model-server-run/RunnerConfig.py
-- How to run (from repository root):
-```bash
-python experiment-runner/ experiment-runner/examples/model-server-run/RunnerConfig.py
-```
-- Prerequisites:
-  - Extract models.zip (or run ./setup.sh) so model-server/models/ contains the .pkl files.
-  - Install server deps:
-```bash
-pip install -r model-server/requirements.txt
-```
-  - Install ER deps:
-```bash
-pip install -r experiment-runner/requirements.txt
-```
-  - Also install requests if missing:
-```bash
-pip install requests
-```
-- Notes:
-  - The example tries combinations of model types (catboost/lgbm/xgboost) and log levels (info/debug), skipping any missing model file.
-  - It launches uvicorn in the model-server directory so app.main and models path resolve, waits for /health to be loaded, optionally does a warmup POST /invocation, then shuts down.
 
 ## References
-- fraud-detection-with-catboost-xgboost-lightgbm.ipynb – model exploration notebook
-- model-server/README.md – server details
-- test-server/README.md – load testing details
+- Notebook credit: Fraud Detection with CatBoost, XGBoost, LightGBM by Emre Bayir — https://www.kaggle.com/code/emrebayirr/fraud-detection-with-catboost-xgboost-lightgbm
+- Dataset credit: Credit Card Transactions Dataset by Priyam Choksi — https://www.kaggle.com/datasets/priyamchoksi/credit-card-transactions-dataset

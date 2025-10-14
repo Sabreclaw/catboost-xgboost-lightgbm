@@ -18,7 +18,7 @@ This repository includes a simple Locust setup to stress test the FastAPI infere
 
 ## Prerequisites
 - Server running (see earlier sections) on http://localhost:8000 or another host
-- Dependencies installed:
+- Dependencies installed (from repository root):
   - pip install -r requirements.txt
 
 ## Prepare your test data
