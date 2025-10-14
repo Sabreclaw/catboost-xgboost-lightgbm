@@ -1,0 +1,15 @@
+{
+  "host": "http://localhost:8000",
+  "users": 200,
+  "spawn_rate": 20,
+  "duration": "2m",
+  "stop_timeout": 60,
+  "wait_time": {
+    "min_seconds": 0.01,
+    "max_seconds": 0.1
+  },
+  "pred_method": null,
+  "test_files": {
+    "x_test_path": "test_files/X_test.csv"
+  }
+}

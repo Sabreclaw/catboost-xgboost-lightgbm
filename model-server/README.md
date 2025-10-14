@@ -1,0 +1,218 @@
+# Model Inference Server (FastAPI)
+
+A minimal, production‑ready-ish (joking not yet) FastAPI server that loads a pickled ML model at startup and serves predictions via HTTP.
+
+- Models are expected under the repository `models` folder.
+- Select which model to load via the `LOAD_MODEL` environment variable.
+- Two endpoints are provided:
+  - `GET /health` – server and model status
+  - `POST /invocation` – run inference
+
+Supported model keys and filenames (relative to `./models`):
+- `catboost` → `Catboost_model.pkl`
+- `lgbm` → `LGBM_model.pkl`
+- `xgboost` → `XGBoost_model.pkl`
+
+FastAPI interactive docs are available at:
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+
+## Prerequisites
+- Python 3.9 or newer (3.10+ recommended)
+- pip
+
+Note: The pickled models might require their respective libraries (catboost, xgboost, lightgbm) to be installed in the environment where you run the server. See “Install dependencies” below.
+
+
+## Project structure
+```
+model-server/
+├─ app/
+│  └─ main.py          # FastAPI application
+├─ models/
+│  ├─ Catboost_model.pkl
+│  ├─ LGBM_model.pkl
+│  └─ XGBoost_model.pkl
+└─ requirements.txt
+```
+
+
+## Setup
+### 1) Create and activate a virtual environment
+macOS/Linux (bash/zsh):
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Windows (PowerShell):
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+### 2) Install dependencies
+```bash
+pip install -r requirements.txt
+```
+
+If your `.pkl` depends on libraries that are commented out in `requirements.txt`, install them as well, e.g.:
+```bash
+# Install only what your pickle needs
+pip install catboost     # for CatBoost pickles
+pip install xgboost      # for XGBoost pickles
+pip install lightgbm     # for LightGBM pickles
+```
+
+
+## Run the server
+Set which model to load using `LOAD_MODEL` and start uvicorn.
+
+macOS/Linux (bash/zsh):
+```bash
+export LOAD_MODEL=catboost   # or lgbm, xgboost
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Windows (PowerShell):
+```powershell
+$env:LOAD_MODEL = "catboost"  # or lgbm, xgboost
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+If everything is OK, the server will load the corresponding `*.pkl` from `./models` at startup.
+
+
+## Health check
+```bash
+curl -s http://localhost:8000/health | jq
+```
+Example response:
+```json
+{
+  "status": "ok",
+  "loaded": true,
+  "model": "catboost",
+  "model_path": "/absolute/path/to/models/Catboost_model.pkl",
+  "error": null
+}
+```
+If the model is missing or cannot be loaded, `status` will be `error` and `error` will explain why.
+
+
+## Invoke predictions
+Endpoint: `POST /invocation`
+
+The server accepts several JSON shapes and will internally convert them to a pandas DataFrame. Below are common examples. Replace feature names/values with those appropriate for your model.
+
+### 1) Single JSON object (one row)
+```bash
+curl -X POST http://localhost:8000/invocation \
+  -H 'Content-Type: application/json' \
+  -d '{"feature_1": 1.2, "feature_2": 3, "feature_3": "A"}'
+```
+Response:
+```json
+{"predictions":[0.123]}  
+```
+
+### 2) List of JSON objects (multiple rows)
+```bash
+curl -X POST http://localhost:8000/invocation \
+  -H 'Content-Type: application/json' \
+  -d '[{"feature_1": 1.2, "feature_2": 3}, {"feature_1": 0.7, "feature_2": 9}]'
+```
+
+### 3) Wrapped as `instances`
+```bash
+curl -X POST 'http://localhost:8000/invocation' \
+  -H 'Content-Type: application/json' \
+  -d '{"instances": [{"feature_1": 1.2, "feature_2": 3}, {"feature_1": 0.7, "feature_2": 9}]}'
+```
+
+### 4) Columns + data (sklearn-like)
+```bash
+curl -X POST 'http://localhost:8000/invocation' \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "columns": ["feature_1", "feature_2"],
+        "data": [[1.2, 3], [0.7, 9]]
+      }'
+```
+
+### 5) List of lists (unnamed columns)
+```bash
+curl -X POST 'http://localhost:8000/invocation' \
+  -H 'Content-Type: application/json' \
+  -d '[[1.2, 3], [0.7, 9]]'
+```
+
+### Choosing the prediction method
+By default, the server calls `predict`. You can choose a different method (e.g., `predict_proba`) via query param or body field.
+
+- Query parameter:
+```bash
+curl -X POST 'http://localhost:8000/invocation?method=predict_proba' \
+  -H 'Content-Type: application/json' \
+  -d '{"instances": [{"feature_1": 1.2, "feature_2": 3}]}'
+```
+
+- Body field:
+```bash
+curl -X POST 'http://localhost:8000/invocation' \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "method": "predict_proba",
+        "instances": [{"feature_1": 1.2, "feature_2": 3}]
+      }'
+```
+
+Note: If the model does not implement the requested method, the server returns HTTP 400 with a helpful message.
+
+
+## Troubleshooting
+- `GET /health` shows `error`:
+  - Ensure `LOAD_MODEL` is set to one of: `catboost`, `lgbm`, `xgboost`.
+  - Ensure the matching pickle file exists in `./models/` with the exact filename:
+    - `Catboost_model.pkl` for `catboost`
+    - `LGBM_model.pkl` for `lgbm`
+    - `XGBoost_model.pkl` for `xgboost`
+  - If the pickle requires extra dependencies, install them (catboost/xgboost/lightgbm).
+
+- `POST /invocation` returns `400 Invalid JSON body`:
+  - Check your JSON is valid and you set `Content-Type: application/json`.
+
+- `POST /invocation` returns `400 Empty or unrecognized payload format`:
+  - Use one of the documented payload shapes above.
+
+- `POST /invocation` returns `400 Model does not support method ...`:
+  - Use a method implemented by your model (commonly `predict`, sometimes `predict_proba`).
+
+- `POST /invocation` returns `500 Inference failed: ...`:
+  - The model raised an exception while predicting. Check your feature names/order and types.
+
+
+## Notes
+- This server is a minimal reference and is not hardened for production. Consider adding input validation, authentication, request limits, logging/metrics, and proper error handling for production use.
+- Interactive documentation is available at http://localhost:8000/docs when the server is running.
+
+
+## Debug logging
+You can enable verbose logs from the server without changing your run command much.
+
+Options:
+- Set environment variable LOG_LEVEL=DEBUG (takes precedence), or set DEBUG=1 for a quick toggle.
+- Or pass --log-level debug to uvicorn.
+
+Examples (bash/zsh):
+```bash
+export LOAD_MODEL=catboost
+export LOG_LEVEL=DEBUG           # or: export DEBUG=1
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug
+```
+
+What you will see:
+- Startup: selected model key, resolved model path, success/failure loading.
+- /health: warnings when model is not loaded and any stored error message.
+- /invocation: payload summary, resolved prediction method, DataFrame shape/columns, and detailed errors with stack traces if inference fails.

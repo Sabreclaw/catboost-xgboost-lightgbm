@@ -1,0 +1,82 @@
+# Python byte-compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-wheel-metadata/
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+_MACOS/
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.pyright/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Environment / virtualenv
+.env
+.env.*
+.venv/
+venv/
+ENV/
+
+# Logs and temp files
+*.log
+logs/
+*.tmp
+*.temp
+
+# OS / Editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Local data directories (not tracked by default)
+data/
+datasets/
+
+# Project-specific ignores
+# Do not commit local test inputs
+test-server/test_files/
+
+*.zip
