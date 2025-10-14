@@ -15,9 +15,17 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCH_FILE="$ROOT_DIR/patches/experiment-runner-model-server-run.patch"
 SUBMODULE_DIR="$ROOT_DIR/experiment-runner"
 
-if [[ ! -d "$SUBMODULE_DIR/.git" ]]; then
-  echo "ERROR: experiment-runner does not look like a git submodule directory ($SUBMODULE_DIR)." >&2
-  exit 1
+# Validate that experiment-runner looks like a git repo (submodule or standalone clone)
+if [[ ! -e "$SUBMODULE_DIR/.git" ]]; then
+  # In many submodules, .git is a file (not a dir). As a fallback, probe with git.
+  if (cd "$SUBMODULE_DIR" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then
+    : # ok
+  else
+    echo "ERROR: experiment-runner does not look like a git repository or submodule at: $SUBMODULE_DIR" >&2
+    echo "Hint: initialize submodules with:" >&2
+    echo "  git submodule update --init --recursive" >&2
+    exit 1
+  fi
 fi
 
 if [[ ! -f "$PATCH_FILE" ]]; then

@@ -35,6 +35,12 @@ FastAPI interactive docs are available at:
 
 Note: The pickled models might require their respective libraries (catboost, xgboost, lightgbm) to be installed in the environment where you run the server. See “Install dependencies” below.
 
+Large model artifacts may be stored using Git LFS in this repository. If models were pulled via LFS, ensure Git LFS is installed and run the following from the repository root before starting the server (see the root README for details):
+```bash
+git lfs install
+git lfs pull
+```
+
 ## Project structure
 ```
 model-server/

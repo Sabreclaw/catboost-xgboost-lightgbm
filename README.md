@@ -7,6 +7,7 @@ A compact project to serve and test gradient boosting models (CatBoost, LightGBM
 - [Repository structure](#repository-structure)
 - [Flow diagram](#flow-diagram)
 - [Clone (with submodules)](#clone-with-submodules)
+- [Large files (Git LFS)](#large-files-git-lfs)
 - [Asset setup (zip)](#asset-setup-zip)
 - [Quick start (serve and test)](#quick-start-serve-and-test)
 - [Experiment Runner example](#experiment-runner-example)
@@ -70,6 +71,72 @@ When pulling updates in the future, also update submodules:
 git pull --recurse-submodules
 git submodule update --init --recursive
 ```
+
+## Large files (Git LFS)
+This repository stores large artifacts (datasets and pre-trained models) using Git LFS. After cloning, Git LFS must be installed and the LFS files pulled.
+
+LFS-tracked files include (not exhaustive):
+- models.zip → model-server/models/
+- test_files.zip → test-server/test_files/
+- credit_card_transactions.csv.zip → ./credit_card_transactions.csv
+
+### Install Git LFS
+Option A — package manager:
+- macOS (Homebrew):
+```bash
+brew install git-lfs
+```
+- Ubuntu/Debian:
+```bash
+sudo apt-get update && sudo apt-get install -y git-lfs
+```
+- Fedora:
+```bash
+sudo dnf install -y git-lfs
+```
+- CentOS/RHEL (yum):
+```bash
+sudo yum install -y git-lfs
+```
+
+Option B — user-space install (no root access):
+```bash
+# Download a release tarball (example for Linux amd64 v3.2.0)
+wget https://github.com/git-lfs/git-lfs/releases/download/v3.2.0/git-lfs-linux-amd64-v3.2.0.tar.gz
+# Extract
+tar xvf git-lfs-linux-amd64-v3.2.0.tar.gz
+cd git-lfs-3.2.0/
+# Make installer executable
+chmod +x install.sh
+# Adjust install prefix to user local bin
+sed -i 's|^prefix="/usr/local"$|prefix="$HOME/.local"|' install.sh
+# Ensure ~/.local/bin exists and is on PATH
+mkdir -p ~/.local/bin/
+export PATH="$HOME/.local/bin:$PATH"
+# Install and verify
+./install.sh
+git-lfs --version
+```
+Tip: add ~/.local/bin to your shell profile (~/.bashrc, ~/.zshrc) so it persists:
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### Pull LFS files
+Run these after cloning and installing Git LFS:
+```bash
+git lfs install
+git lfs pull
+```
+For existing clones that were fetched before LFS was installed:
+```bash
+git lfs install
+git lfs fetch --all
+git lfs checkout   # or: git lfs pull
+```
+
+If Git LFS cannot be installed, the large assets can be downloaded manually (from Releases or other distribution) and placed as described in [Asset setup (zip)](#asset-setup-zip).
 
 ## Asset setup (zip)
 Some large files are provided as .zip archives. Use the helper script to decompress them into the expected locations.
