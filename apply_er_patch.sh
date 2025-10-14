@@ -37,6 +37,24 @@ echo "Applying patch to experiment-runner ..."
 # We apply from inside the submodule so the paths (examples/...) match.
 (
   cd "$SUBMODULE_DIR"
+
+  # If someone mistakenly pasted the patch text into the target files, clean them up first
+  BAD_DIR="examples/model-server-run"
+  BAD_FILES=("RunnerConfig.py" "README.md")
+  mkdir -p "$BAD_DIR"
+  for f in "${BAD_FILES[@]}"; do
+    if [[ -f "$BAD_DIR/$f" ]]; then
+      if grep -q "^diff --git" "$BAD_DIR/$f" 2>/dev/null; then
+        ts=$(date +%s)
+        echo "Found invalid file with patch text: $BAD_DIR/$f — backing up to $BAD_DIR/$f.bak.$ts and removing"
+        mv "$BAD_DIR/$f" "$BAD_DIR/$f.bak.$ts" || true
+        git rm -f --cached "$BAD_DIR/$f" >/dev/null 2>&1 || true
+        rm -f "$BAD_DIR/$f" || true
+      fi
+    fi
+  done
+
+  # Apply the patch (try with index first for better git integration)
   git apply --index "$PATCH_FILE" || git apply "$PATCH_FILE"
 )
 
