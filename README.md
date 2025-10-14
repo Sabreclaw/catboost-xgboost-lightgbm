@@ -87,13 +87,21 @@ bash setup.sh
 
 If unzip is not installed, install zip/unzip tools first:
 - macOS (Homebrew):
-  - brew install zip
+```bash
+brew install zip
+```
 - Ubuntu/Debian:
-  - sudo apt-get update && sudo apt-get install -y unzip
+```bash
+sudo apt-get update && sudo apt-get install -y unzip
+```
 - Fedora:
-  - sudo dnf install -y unzip
+```bash
+sudo dnf install -y unzip
+```
 - CentOS/RHEL (yum):
-  - sudo yum install -y unzip
+```bash
+sudo yum install -y unzip
+```
 
 Manual alternative (without setup.sh):
 - Extract models.zip and place the resulting models/ folder under model-server/ so that you have model-server/models/ with the model .pkl files inside.
@@ -108,10 +116,14 @@ After extraction, it is possible to:
 A helper script is available at the repository root to streamline serving the model or running load tests. It uses interactive prompts allowing confirmation or skipping of each step.
 
 Serve the FastAPI model server (creates model-server/.venv if selected, installs dependencies if selected, and starts uvicorn):
-- With prompts and defaults
-  - bash start.sh serve
-- With some flags (still prompts; flags set initial defaults)
-  - bash start.sh serve --host 127.0.0.1 --port 8000 --model lgbm
+- With prompts and defaults:
+```bash
+bash start.sh serve
+```
+- With some flags (still prompts; flags set initial defaults):
+```bash
+bash start.sh serve --host 127.0.0.1 --port 8000 --model lgbm
+```
 - Prompts include:
   - Create model-server/.venv? (skip to use system Python)
   - Install dependencies from model-server/requirements.txt?
@@ -120,9 +132,17 @@ Serve the FastAPI model server (creates model-server/.venv if selected, installs
   - Enable debug logs? (sets LOG_LEVEL=DEBUG and passes --log-level debug to uvicorn)
 
 Run Locust load tests (headless):
-- bash start.sh test [HOST] [USERS] [SPAWN_RATE] [DURATION] [LOGLEVEL]
-- Example: bash start.sh test http://localhost:8000 200 20 2m DEBUG
-- If Locust is not installed, the script can install it via: pip install -r test-server/requirements.txt (prompted)
+```bash
+bash start.sh test [HOST] [USERS] [SPAWN_RATE] [DURATION] [LOGLEVEL]
+```
+Example:
+```bash
+bash start.sh test http://localhost:8000 200 20 2m DEBUG
+```
+- If Locust is not installed, the script can install it via:
+```bash
+pip install -r test-server/requirements.txt
+```
 - It runs test-server/run_locust_headless.sh with the chosen parameters.
 
 Notes
@@ -134,17 +154,30 @@ Notes
 Since experiment-runner is included as a git submodule, the example config is provided as a patch that can be applied to the submodule (to avoid directly modifying vendor code). Apply the patch once, then run the example.
 
 - Apply the example patch (from repository root):
-  - bash apply_er_patch.sh
-  - This creates experiment-runner/examples/model-server-run/ with RunnerConfig.py and README.md inside the submodule.
+```bash
+bash apply_er_patch.sh
+```
+This creates experiment-runner/examples/model-server-run/ with RunnerConfig.py and README.md inside the submodule.
 
 - Example config (after patching): experiment-runner/examples/model-server-run/RunnerConfig.py
 - How to run (from repository root):
-  - python experiment-runner/ experiment-runner/examples/model-server-run/RunnerConfig.py
+```bash
+python experiment-runner/ experiment-runner/examples/model-server-run/RunnerConfig.py
+```
 - Prerequisites:
   - Extract models.zip (or run ./setup.sh) so model-server/models/ contains the .pkl files.
-  - Install server deps: pip install -r model-server/requirements.txt (preferably in model-server/.venv via start.sh serve)
-  - Install ER deps: pip install -r experiment-runner/requirements.txt
-  - Also install requests if missing: pip install requests
+  - Install server deps:
+```bash
+pip install -r model-server/requirements.txt
+```
+  - Install ER deps:
+```bash
+pip install -r experiment-runner/requirements.txt
+```
+  - Also install requests if missing:
+```bash
+pip install requests
+```
 - Notes:
   - The example tries combinations of model types (catboost/lgbm/xgboost) and log levels (info/debug), skipping any missing model file.
   - It launches uvicorn in the model-server directory so app.main and models path resolve, waits for /health to be loaded, optionally does a warmup POST /invocation, then shuts down.

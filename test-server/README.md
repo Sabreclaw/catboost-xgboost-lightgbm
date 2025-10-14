@@ -45,7 +45,7 @@ This repository includes a simple Locust setup to stress test the FastAPI infere
 Option A – use the helper script:
 ```bash
 # from repository root
-sh run_locust_headless.sh http://localhost:8000 200 20 2m DEBUG
+bash test-server/run_locust_headless.sh http://localhost:8000 200 20 2m DEBUG
 ```
 - Arguments: HOST USERS SPAWN_RATE DURATION [LOGLEVEL]
   - HOST: default http://localhost:8000
