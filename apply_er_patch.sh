@@ -56,10 +56,21 @@ echo "Applying patch to experiment-runner ..."
 
   # Apply the patch (try with index first for better git integration)
   git apply --index "$PATCH_FILE" || git apply "$PATCH_FILE"
+
+  # Post-apply sanity check: if any target file accidentally contains patch text, truncate it
+  FIX_DIR="examples/model-server-run"
+  for f in "RunnerConfig.py" "README.md"; do
+    if [[ -f "$FIX_DIR/$f" ]]; then
+      if grep -q "^diff --git" "$FIX_DIR/$f" 2>/dev/null; then
+        echo "Sanitizing file with stray patch text: $FIX_DIR/$f"
+        awk '/^diff --git/{exit} {print}' "$FIX_DIR/$f" > "$FIX_DIR/$f.tmp" && mv "$FIX_DIR/$f.tmp" "$FIX_DIR/$f"
+      fi
+    fi
+  done
 )
 
 echo "Patch applied. New files should now exist under:"
 echo "  experiment-runner/examples/model-server-run/"
 echo
-echo "If you want to commit these changes inside the submodule, run:"
+ echo "If you want to commit these changes inside the submodule, run:"
 echo "  (cd experiment-runner && git add -A && git commit -m 'Add model-server-run example')"
