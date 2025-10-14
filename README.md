@@ -11,7 +11,7 @@ For detailed setup and usage, see the component-specific READMEs:
 
 Project map (high level):
 ```
-fraud-detection/
+repo-root/
 ├─ model-server/           # FastAPI app and model loading
 ├─ test-server/            # Locust scenarios, config, helpers
 ├─ credit_card_transactions.csv
