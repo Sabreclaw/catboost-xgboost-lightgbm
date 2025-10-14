@@ -2,7 +2,7 @@
 
 A compact project to serve and test gradient boosting models (CatBoost, LightGBM, XGBoost) with a FastAPI inference server and Locust-based load testing.
 
-Index
+## Index
 - [Overview](#overview)
 - [Repository structure](#repository-structure)
 - [Flow diagram](#flow-diagram)
@@ -12,17 +12,17 @@ Index
 - [Experiment Runner example](#experiment-runner-example)
 - [References](#references)
 
-Overview
+## Overview
 This repository contains:
 - model-server/ – a FastAPI inference server that loads a selected model and serves predictions.
 - test-server/ – a Locust load-testing setup that sends single-row POST /invocation requests to the model server (no /health checks from Locust).
 - fraud-detection-with-catboost-xgboost-lightgbm.ipynb – a notebook exploring/modeling fraud detection.
 
 For component-specific details, see:
-- Model server: model-server/README.md
-- Load testing: test-server/README.md
+- Model server: [model-server/README.md](model-server/README.md)
+- Load testing: [test-server/README.md](test-server/README.md)
 
-Repository structure
+## Repository structure
 ```
 repo-root/
 ├─ model-server/           # FastAPI app and model loading
@@ -31,7 +31,7 @@ repo-root/
 └─ fraud-detection-with-catboost-xgboost-lightgbm.ipynb
 ```
 
-Flow diagram
+## Flow diagram
 ```mermaid
 flowchart LR
     subgraph Client/Tester
@@ -51,7 +51,7 @@ Notes
 - Test-server behavior can be configured via test-server/config.json or CLI flags (see test-server/README.md).
 - The model server supports choosing a prediction method via the method query parameter (e.g., /invocation?method=predict_proba). See model-server/README.md for details.
 
-Clone (with submodules)
+## Clone (with submodules)
 This repository includes experiment-runner as a git submodule. When cloning, use the recursive flag so submodules are fetched automatically.
 
 Recommended (fresh clone):
@@ -71,7 +71,7 @@ git pull --recurse-submodules
 git submodule update --init --recursive
 ```
 
-Asset setup (zip)
+## Asset setup (zip)
 Some large files are provided as .zip archives. Use the helper script to decompress them into the expected locations.
 
 Archives and target locations:
@@ -104,7 +104,7 @@ After extraction, it is possible to:
 - Start the model server (see model-server/README.md) — ensure LOAD_MODEL is set (catboost/lgbm/xgboost) and corresponding .pkl exists in model-server/models/.
 - Run load tests (see test-server/README.md) — ensure test-server/test_files/X_test.csv exists.
 
-Quick start (serve and test)
+## Quick start (serve and test)
 A helper script is available at the repository root to streamline serving the model or running load tests. It uses interactive prompts allowing confirmation or skipping of each step.
 
 Serve the FastAPI model server (creates model-server/.venv if selected, installs dependencies if selected, and starts uvicorn):
@@ -130,7 +130,7 @@ Notes
 - For model serving details and environment variables, see model-server/README.md.
 - For load testing details and configuration, see test-server/README.md.
 
-Experiment Runner example
+## Experiment Runner example
 Since experiment-runner is included as a git submodule, the example config is provided as a patch that can be applied to the submodule (to avoid directly modifying vendor code). Apply the patch once, then run the example.
 
 - Apply the example patch (from repository root):
@@ -149,7 +149,7 @@ Since experiment-runner is included as a git submodule, the example config is pr
   - The example tries combinations of model types (catboost/lgbm/xgboost) and log levels (info/debug), skipping any missing model file.
   - It launches uvicorn in the model-server directory so app.main and models path resolve, waits for /health to be loaded, optionally does a warmup POST /invocation, then shuts down.
 
-References
+## References
 - fraud-detection-with-catboost-xgboost-lightgbm.ipynb – model exploration notebook
 - model-server/README.md – server details
 - test-server/README.md – load testing details

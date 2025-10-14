@@ -1,7 +1,7 @@
-## Load testing with Locust
+# Load testing with Locust
 This repository includes a simple Locust setup to stress test the FastAPI inference server.
 
-Index
+## Index
 - [Folder layout](#folder-layout)
 - [Prerequisites](#prerequisites)
 - [Prepare test data](#prepare-your-test-data)
@@ -10,23 +10,23 @@ Index
 - [Notes](#notes)
 - [Example config.json](#example-configjson)
 
-Folder layout:
+## Folder layout
 - test-server/
   - locustfile.py – Locust scenarios that read test-server/test_files/X_test.csv, ignore the first column (id), and send requests to /invocation
   - test_files/ – place X_test.csv and y_test.csv here (files not provided)
   - run_locust_headless.sh – convenience script to run Locust in headless mode
 
-Prerequisites:
+## Prerequisites
 - Server running (see earlier sections) on http://localhost:8000 or another host
 - Dependencies installed:
   - pip install -r requirements.txt
 
-Prepare your test data:
+## Prepare your test data
 - Create the folder test-server/test_files
 - Put X_test.csv and y_test.csv inside it
 - X_test.csv: the first column must be an id; all remaining columns are features to send in requests
 
-Configuration (config.json):
+## Configuration (config.json)
 - Locust defaults can be configured in test-server/config.json
 - Fields:
   - host: base URL of the model server (used if --host is not provided)
@@ -41,7 +41,7 @@ Configuration (config.json):
   - CLI flags/environment always override config.json.
   - PRED_METHOD env var overrides pred_method in config.
 
-Run Locust (headless):
+## Run Locust (headless)
 Option A – use the helper script:
 ```bash
 # from repository root
@@ -67,12 +67,12 @@ locust -f test-server/locustfile.py \
   --stop-timeout 60
 ```
 
-Notes:
+## Notes
 - locustfile.py expects test-server/test_files/X_test.csv to exist; it ignores the first (id) column and uses the rest as features.
 - The script sends only single-row requests to POST /invocation. No /health checks are performed.
 - For a more aggressive test, increase USERS and SPAWN_RATE and reduce wait times if needed.
 
-Example config.json:
+## Example config.json
 ```json
 {
   "host": "http://localhost:8000",
