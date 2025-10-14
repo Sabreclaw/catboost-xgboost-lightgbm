@@ -35,7 +35,7 @@ flowchart LR
 
 Notes:
 - The test-server is configured to send only single-row JSON payloads to POST /invocation and does not perform periodic /health checks.
-- You can configure test-server behavior via test-server/config.json or CLI flags (see test-server/README.md).
+- Test-server behavior can be configured via test-server/config.json or CLI flags (see test-server/README.md).
 - The model server supports choosing a prediction method via the method query parameter (e.g., /invocation?method=predict_proba). See model-server/README.md for details.
 
 
@@ -75,11 +75,17 @@ After extraction, you can:
 
 
 ## Quick start script (start.sh)
-A helper script is available at the repository root to streamline serving the model or running load tests. It uses interactive prompts so you can confirm/skip each step.
+A helper script is available at the repository root to streamline serving the model or running load tests. It uses interactive prompts allowing confirmation or skipping of each step.
 
 ## Running the model-server with Experiment Runner
 
-- Example config: experiment-runner/examples/model-server-run/RunnerConfig.py
+Since experiment-runner is now included as a git submodule, the example config is provided as a patch you can apply to the submodule (so we don't directly modify vendor code). Apply the patch once, then run the example.
+
+- Apply the example patch (from repository root):
+  - bash apply_er_patch.sh
+  - This creates experiment-runner/examples/model-server-run/ with RunnerConfig.py and README.md inside the submodule. The change inside the submodule may be committed if desired.
+
+- Example config (after patching): experiment-runner/examples/model-server-run/RunnerConfig.py
 - How to run (from repository root):
   - python experiment-runner/ experiment-runner/examples/model-server-run/RunnerConfig.py
 - Prerequisites:
@@ -101,7 +107,7 @@ Usage:
     - bash start.sh serve
   - With some flags (still prompts; flags set initial defaults)
     - bash start.sh serve --host 127.0.0.1 --port 8000 --model lgbm
-  - During the run you will be asked:
+  - During the run, prompts include:
     - Create model-server/.venv? (skip to use system Python)
     - Install dependencies from model-server/requirements.txt?
     - Choose LOAD_MODEL (catboost/lgbm/xgboost)
@@ -115,6 +121,6 @@ Usage:
   - It will run test-server/run_locust_headless.sh with the chosen parameters.
 
 Notes:
-- The script defaults to using a virtual environment at model-server/.venv for both serving and (if available) testing. If that venv doesn’t exist or you skip creating it, your system Python/pip will be used.
+- The script defaults to using a virtual environment at model-server/.venv for both serving and (if available) testing. If that venv does not exist or venv creation is skipped, the system Python/pip will be used.
 - For model serving details and environment variables, see model-server/README.md.
 - For load testing details and configuration, see test-server/README.md.

@@ -1,0 +1,301 @@
+diff --git a/examples/model-server-run/RunnerConfig.py b/examples/model-server-run/RunnerConfig.py
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/examples/model-server-run/RunnerConfig.py
+@@ -0,0 +1,265 @@
++from __future__ import annotations
++
++import os
++import sys
++import time
++import json
++import signal
++import shlex
++import subprocess
++from dataclasses import dataclass
++from typing import Dict, List, Any, Optional
++from pathlib import Path
++from os.path import dirname, realpath
++
++import requests
++
++from EventManager.Models.RunnerEvents import RunnerEvents
++from EventManager.EventSubscriptionController import EventSubscriptionController
++from ConfigValidator.Config.Models.RunTableModel import RunTableModel
++from ConfigValidator.Config.Models.FactorModel import FactorModel
++from ConfigValidator.Config.Models.RunnerContext import RunnerContext
++from ConfigValidator.Config.Models.OperationType import OperationType
++from ProgressManager.Output.OutputProcedure import OutputProcedure as output
++
++
++@dataclass
++class HealthResult:
++    ok: bool
++    status_code: int
++    body: Dict[str, Any]
++
++
++class RunnerConfig:
++    ROOT_DIR = Path(dirname(realpath(__file__)))
++
++    # Name and output directory for this experiment
++    name: str = "model-server-run"
++    results_output_path: Path = ROOT_DIR / 'experiments'
++
++    # Run automatically through all combinations
++    operation_type: OperationType = OperationType.AUTO
++    time_between_runs_in_ms: int = 500
++
++    # Internal handle to the server process
++    _proc: Optional[subprocess.Popen] = None
++
++    def __init__(self):
++        EventSubscriptionController.subscribe_to_multiple_events([
++            (RunnerEvents.BEFORE_EXPERIMENT, self.before_experiment),
++            (RunnerEvents.BEFORE_RUN       , self.before_run       ),
++            (RunnerEvents.START_RUN        , self.start_run        ),
++            (RunnerEvents.START_MEASUREMENT, self.start_measurement),
++            (RunnerEvents.INTERACT         , self.interact         ),
++            (RunnerEvents.STOP_MEASUREMENT , self.stop_measurement ),
++            (RunnerEvents.STOP_RUN         , self.stop_run         ),
++            (RunnerEvents.POPULATE_RUN_DATA, self.populate_run_data),
++            (RunnerEvents.AFTER_EXPERIMENT , self.after_experiment ),
++        ])
++
++        self.run_table_model: Optional[RunTableModel] = None
++        output.console_log("[model-server-run] Config loaded")
++
++    def create_run_table_model(self) -> RunTableModel:
++        """
++        Define factors for model choice and log level. Skip combinations for which
++        the target pickle does not exist in model-server/models.
++        """
++        model_factor = FactorModel("model", ["catboost", "lgbm", "xgboost"])  # LOAD_MODEL
++        log_factor = FactorModel("log_level", ["INFO", "DEBUG"])               # LOG_LEVEL
++
++        self.run_table_model = RunTableModel(
++            factors=[model_factor, log_factor],
++            exclude_combinations=[],
++            repetitions=1,
++            data_columns=[
++                "healthy",               # bool
++                "health_status_code",    # int
++                "invocation_status_code",# int or -1 if skipped
++                "invocation_ms",         # float ms or -1
++                "notes",                 # str
++            ],
++        )
++        return self.run_table_model
++
++    # ---------- Lifecycle hooks ----------
++    def before_experiment(self) -> None:
++        output.console_log("[model-server-run] before_experiment")
++
++    def before_run(self) -> None:
++        output.console_log("[model-server-run] before_run")
++
++    def start_run(self, context: RunnerContext) -> None:
++        """Start uvicorn for model-server with desired environment variables."""
++        run_dir = Path(context.run_dir)
++        run_dir.mkdir(parents=True, exist_ok=True)
++
++        repo_root = Path(dirname(dirname(dirname(self.ROOT_DIR))))  # go up to repo root
++        model_server_dir = repo_root / "model-server"
++        models_dir = model_server_dir / "models"
++
++        model_key = str(context.current_run.get_value("model"))
++        log_level = str(context.current_run.get_value("log_level"))
++
++        # Ensure model pickle exists; if not, skip run early
++        mapping = {
++            "catboost": "Catboost_model.pkl",
++            "lgbm": "LGBM_model.pkl",
++            "xgboost": "XGBoost_model.pkl",
++        }
++        model_file = mapping.get(model_key)
++        candidate = models_dir / model_file if model_file else None
++        if not candidate or not candidate.exists():
++            output.console_log(f"[model-server-run] SKIP: missing model file {candidate}")
++            context.current_run.data = {
++                "healthy": False,
++                "health_status_code": 0,
++                "invocation_status_code": -1,
++                "invocation_ms": -1.0,
++                "notes": f"missing model file: {candidate}",
++            }
++            # Mark run as finished by raising SystemExit that ER will capture as completed with data.
++            # Alternatively, we can just set a flag to skip in interact(). We'll set a flag here.
++            context.current_run._skip_actual = True  # type: ignore[attr-defined]
++            return
++
++        env = os.environ.copy()
++        env["LOAD_MODEL"] = model_key
++        env["LOG_LEVEL"] = log_level
++
++        # Prefer uvicorn from model-server/.venv if present
++        venv_uvicorn = model_server_dir / ".venv" / "bin" / "uvicorn"
++        if venv_uvicorn.exists():
++            cmd = f"{shlex.quote(str(venv_uvicorn))} app.main:app --host 127.0.0.1 --port 8765 --log-level {log_level.lower()}"
++        else:
++            # fallback to module invocation
++            cmd = f"python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --log-level {log_level.lower()}"
++
++        output.console_log(f"[model-server-run] starting: {cmd}")
++        self._proc = subprocess.Popen(
++            shlex.split(cmd),
++            cwd=str(model_server_dir),
++            env=env,
++            stdout=open(run_dir / "server.stdout.log", "w"),
++            stderr=open(run_dir / "server.stderr.log", "w"),
++        )
++
++    def start_measurement(self, context: RunnerContext) -> None:
++        output.console_log("[model-server-run] start_measurement")
++
++    def interact(self, context: RunnerContext) -> None:
++        """
++        Wait for /health to report loaded, optionally perform a warmup /invocation.
++        Block until done.
++        """
++        # If marked to skip
++        if getattr(context.current_run, "_skip_actual", False):  # type: ignore[attr-defined]
++            output.console_log("[model-server-run] run skipped due to precondition (missing model file)")
++            return
++
++        base = "http://127.0.0.1:8765"
++        t0 = time.time()
++        health = self._wait_for_health(base, timeout_s=60)
++
++        inv_status = -1
++        inv_ms = -1.0
++        notes = ""
++
++        # Optionally perform a single invocation if healthy
++        if health.ok:
++            try:
++                payload = {"feature_1": 0, "feature_2": 0}  # minimal placeholder; server accepts flexible shapes
++                t1 = time.time()
++                r = requests.post(f"{base}/invocation", json=payload, timeout=30)
++                inv_ms = (time.time() - t1) * 1000.0
++                inv_status = r.status_code
++            except Exception as ex:
++                notes = f"warmup failed: {ex}"
++
++        # Store interim data so even on crash we have something
++        context.current_run.data = {
++            "healthy": health.ok,
++            "health_status_code": health.status_code,
++            "invocation_status_code": inv_status,
++            "invocation_ms": inv_ms,
++            "notes": notes,
++        }
++
++        # Keep server shortly alive for any external profiler if needed
++        while time.time() - t0 < 5:
++            if not self._proc or self._proc.poll() is not None:
++                break
++            time.sleep(0.25)
++
++    def stop_measurement(self, context: RunnerContext) -> None:
++        output.console_log("[model-server-run] stop_measurement")
++
++    def stop_run(self, context: RunnerContext) -> None:
++        output.console_log("[model-server-run] stop_run: terminating server")
++        self._terminate_proc()
++
++    def populate_run_data(self, context: RunnerContext) -> Optional[Dict[str, Any]]:
++        # Data already populated during interact()
++        return context.current_run.data if hasattr(context.current_run, 'data') else None
++
++    def after_experiment(self) -> None:
++        output.console_log("[model-server-run] after_experiment")
++        self._terminate_proc()
++
++    # ---------- Helpers ----------
++    def _wait_for_health(self, base: str, timeout_s: int = 60) -> HealthResult:
++        deadline = time.time() + timeout_s
++        last_code = 0
++        last_body: Dict[str, Any] = {}
++        while time.time() < deadline:
++            try:
++                r = requests.get(f"{base}/health", timeout=2)
++                last_code = r.status_code
++                try:
++                    last_body = r.json()
++                except Exception:
++                    last_body = {"raw": r.text}
++                ok = (r.status_code == 200) and bool(last_body.get("loaded"))
++                if ok:
++                    return HealthResult(True, r.status_code, last_body)
++            except Exception:
++                pass
++            time.sleep(0.5)
++        return HealthResult(False, last_code, last_body)
++
++    def _terminate_proc(self) -> None:
++        if self._proc and self._proc.poll() is None:
++            try:
++                self._proc.send_signal(signal.SIGTERM)
++                try:
++                    self._proc.wait(timeout=10)
++                except subprocess.TimeoutExpired:
++                    self._proc.kill()
++            except Exception:
++                try:
++                    self._proc.kill()
++                except Exception:
++                    pass
++        self._proc = None
++
++    # ================================ DO NOT ALTER BELOW THIS LINE ================================
++    experiment_path: Path = None
++
++diff --git a/examples/model-server-run/README.md b/examples/model-server-run/README.md
++new file mode 100644
++index 0000000..1111111
++--- /dev/null
+++++ b/examples/model-server-run/README.md
++@@ -0,0 +1,84 @@
++# Model Server Run (Experiment Runner example)
++
++This example starts the FastAPI model-server from the repository root, waits for it to be healthy, performs an optional warmup invocation, and then shuts it down, recording simple run data.
++
++It varies two factors:
++- model: catboost, lgbm, xgboost (skips a run automatically if the corresponding pickle is missing)
++- log_level: INFO, DEBUG
++
++## Prerequisites
++
++- The model-server lives outside the experiment-runner directory (as a sibling in the repository root).
++- Extract models.zip so model-server/models/ contains the pickles.
++- Install server deps (preferably in model-server/.venv):
++  - pip install -r ../../model-server/requirements.txt
++- Install Experiment Runner deps:
++  - pip install -r ../../experiment-runner/requirements.txt
++- Install requests for the probe:
++  - pip install requests
++
++## How to run
++
++From the repository root:
++
++```bash
++python experiment-runner/ examples/model-server-run/RunnerConfig.py
++```
++
++The example will:
++1. Launch uvicorn for model-server/app.main:app on 127.0.0.1:8765 (prefers model-server/.venv/uvicorn if present).
++2. Poll GET /health until loaded=true or timeout.
++3. Perform one POST /invocation with a minimal JSON payload.
++4. Store basic metrics under experiments/model-server-run/.
++5. Shut the server down.
++
++If a model file is missing for a given treatment, the run is skipped but recorded.
++
++## Notes
++
++- You can change factors by editing the arrays in RunnerConfig.py (model, log_level).
++- If you need to pass different host/port, adjust the command string in start_run().
++- All server stdout/stderr are saved under each run's directory (server.*.log).
++

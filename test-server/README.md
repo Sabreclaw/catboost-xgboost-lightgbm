@@ -19,7 +19,7 @@ Prepare your test data:
 - X_test.csv: the first column must be an id; all remaining columns are features to send in requests
 
 Configuration (config.json):
-- You can configure Locust defaults in test-server/config.json
+- Locust defaults can be configured in test-server/config.json
 - Fields:
   - host: base URL of the model server (used if --host is not provided)
   - users: default total users (documentation only; use CLI flags to apply)
@@ -46,7 +46,7 @@ sh run_locust_headless.sh http://localhost:8000 200 20 2m DEBUG
   - DURATION: test time (e.g., 2m, 5m, 1h)
   - LOGLEVEL: Locust logging level (default INFO). Examples: INFO, DEBUG, WARNING
 - Optional: export PRED_METHOD=predict_proba to have Locust call /invocation?method=predict_proba
-- Tip: you can also set LOGLEVEL env var instead of passing it as the 5th arg.
+- Alternatively, set the LOGLEVEL environment variable instead of passing it as the 5th argument.
 
 Option B – raw Locust command:
 ```bash

@@ -1,6 +1,6 @@
 # Model Inference Server (FastAPI)
 
-A minimal, production‑ready-ish (joking not yet) FastAPI server that loads a pickled ML model at startup and serves predictions via HTTP.
+A minimal FastAPI server that loads a pickled ML model at startup and serves predictions via HTTP.
 
 - Models are expected under the repository `models` folder.
 - Select which model to load via the `LOAD_MODEL` environment variable.
@@ -57,9 +57,9 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-If your `.pkl` depends on libraries that are commented out in `requirements.txt`, install them as well, e.g.:
+If the pickled model requires additional libraries that are commented out in `requirements.txt`, install them as needed, for example:
 ```bash
-# Install only what your pickle needs
+# Install only the libraries required by the pickle
 pip install catboost     # for CatBoost pickles
 pip install xgboost      # for XGBoost pickles
 pip install lightgbm     # for LightGBM pickles
@@ -199,7 +199,7 @@ Note: If the model does not implement the requested method, the server returns H
 
 
 ## Debug logging
-You can enable verbose logs from the server without changing your run command much.
+Verbose server logs can be enabled without significant changes to the run command.
 
 Options:
 - Set environment variable LOG_LEVEL=DEBUG (takes precedence), or set DEBUG=1 for a quick toggle.
