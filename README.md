@@ -40,17 +40,30 @@ repo-root/
 
 ## Flow diagram
 ```mermaid
-flowchart LR
-    subgraph Client/Tester
-        A[User / Locust]
+flowchart TD
+    subgraph ServeMachine [Serve Machine - Model Server]
+        A[Server Status: READY]
+        A --> B[APIs Available:<br>/invocation<br>/energy-measurement/start<br>/energy-measurement/stop]
     end
 
-    A -->|"POST /invocation (JSON row)"| S[FastAPI Model Server]
-    S -->|"Load selected model at startup"| M[(Model: CatBoost / LGBM / XGBoost)]
-    S -->|Predict / Predict_proba| P[Predictions JSON]
+    subgraph TestMachine [Test Machine - Load Test]
+        C[Start Load Test] --> D[1. Call /energy-measurement/start]
+        D --> E[2. Run Load Tests<br>Call /invocation repeatedly]
+        E --> F[3. Call /energy-measurement/stop]
+        F --> G[4. Receive Energy Report]
+    end
 
-    %% Optional health endpoint exposed by server (not called by Locust)
-    A -.->|GET /health| S
+    %% Clear remote calls
+    D --> H[Start Profiling<br>on Serve Machine]
+    E --> I[Process Inference<br>on Serve Machine]
+    F --> J[Stop Profiling<br>on Serve Machine]
+    G --> K[Energy Summary<br>from Serve Machine]
+
+    %% Server processes
+    B --> H
+    B --> I
+    B --> J
+    J --> K
 ```
 
 Notes
