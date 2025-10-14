@@ -1,6 +1,14 @@
-
 ## Load testing with Locust
 This repository includes a simple Locust setup to stress test the FastAPI inference server.
+
+Index
+- [Folder layout](#folder-layout)
+- [Prerequisites](#prerequisites)
+- [Prepare test data](#prepare-your-test-data)
+- [Configuration (config.json)](#configuration-configjson)
+- [Run Locust (headless)](#run-locust-headless)
+- [Notes](#notes)
+- [Example config.json](#example-configjson)
 
 Folder layout:
 - test-server/

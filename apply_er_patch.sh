@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+
+# If the script is invoked without bash (e.g., using sh), re-exec with bash to avoid 'set: Illegal option -o pipefail'
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
+
 set -euo pipefail
 
 # Apply the model-server-run example as a patch to the experiment-runner submodule.

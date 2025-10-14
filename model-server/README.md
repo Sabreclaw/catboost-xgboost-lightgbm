@@ -2,6 +2,18 @@
 
 A minimal FastAPI server that loads a pickled ML model at startup and serves predictions via HTTP.
 
+Index
+- [Prerequisites](#prerequisites)
+- [Project structure](#project-structure)
+- [Setup](#setup)
+- [Run the server](#run-the-server)
+- [Health check](#health-check)
+- [Invoke predictions](#invoke-predictions)
+- [Choosing the prediction method](#choosing-the-prediction-method)
+- [Troubleshooting](#troubleshooting)
+- [Notes](#notes)
+- [Debug logging](#debug-logging)
+
 - Models are expected under the repository `models` folder.
 - Select which model to load via the `LOAD_MODEL` environment variable.
 - Two endpoints are provided:
@@ -17,13 +29,11 @@ FastAPI interactive docs are available at:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-
 ## Prerequisites
 - Python 3.9 or newer (3.10+ recommended)
 - pip
 
 Note: The pickled models might require their respective libraries (catboost, xgboost, lightgbm) to be installed in the environment where you run the server. See “Install dependencies” below.
-
 
 ## Project structure
 ```
@@ -36,7 +46,6 @@ model-server/
 │  └─ XGBoost_model.pkl
 └─ requirements.txt
 ```
-
 
 ## Setup
 ### 1) Create and activate a virtual environment
@@ -65,7 +74,6 @@ pip install xgboost      # for XGBoost pickles
 pip install lightgbm     # for LightGBM pickles
 ```
 
-
 ## Run the server
 Set which model to load using `LOAD_MODEL` and start uvicorn.
 
@@ -83,7 +91,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 If everything is OK, the server will load the corresponding `*.pkl` from `./models` at startup.
 
-
 ## Health check
 ```bash
 curl -s http://localhost:8000/health | jq
@@ -100,7 +107,6 @@ Example response:
 ```
 If the model is missing or cannot be loaded, `status` will be `error` and `error` will explain why.
 
-
 ## Invoke predictions
 Endpoint: `POST /invocation`
 
@@ -114,7 +120,7 @@ curl -X POST http://localhost:8000/invocation \
 ```
 Response:
 ```json
-{"predictions":[0.123]}  
+{"predictions":[0.123]}
 ```
 
 ### 2) List of JSON objects (multiple rows)
@@ -148,7 +154,7 @@ curl -X POST 'http://localhost:8000/invocation' \
   -d '[[1.2, 3], [0.7, 9]]'
 ```
 
-### Choosing the prediction method
+## Choosing the prediction method
 By default, the server calls `predict`. You can choose a different method (e.g., `predict_proba`) via query param or body field.
 
 - Query parameter:
@@ -169,7 +175,6 @@ curl -X POST 'http://localhost:8000/invocation' \
 ```
 
 Note: If the model does not implement the requested method, the server returns HTTP 400 with a helpful message.
-
 
 ## Troubleshooting
 - `GET /health` shows `error`:
@@ -192,11 +197,9 @@ Note: If the model does not implement the requested method, the server returns H
 - `POST /invocation` returns `500 Inference failed: ...`:
   - The model raised an exception while predicting. Check your feature names/order and types.
 
-
 ## Notes
 - This server is a minimal reference and is not hardened for production. Consider adding input validation, authentication, request limits, logging/metrics, and proper error handling for production use.
 - Interactive documentation is available at http://localhost:8000/docs when the server is running.
-
 
 ## Debug logging
 Verbose server logs can be enabled without significant changes to the run command.

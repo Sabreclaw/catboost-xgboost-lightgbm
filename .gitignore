@@ -79,4 +79,3 @@ datasets/
 # Do not commit local test inputs
 test-server/test_files/
 
-*.zip
