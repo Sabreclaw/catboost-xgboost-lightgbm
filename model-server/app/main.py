@@ -120,10 +120,13 @@ def health() -> JSONResponse:
 
 @app.post("/invocation")
 async def invocation(request: Request) -> JSONResponse:
-    # Check if model loaded
-    if app.state.model is None or app.state.model_error is not None:
-        logger.error("invocation: 503 model not ready. err=%s", app.state.model_error)
-        raise HTTPException(status_code=503, detail=app.state.model_error or "Model not loaded")
+    # Check readiness: either a single model is loaded, or we have models in multi-model mode
+    _models_dict = getattr(app.state, "models", {}) or {}
+    single_ready = app.state.model is not None and app.state.model_error is None
+    multi_ready = bool(_models_dict) and app.state.model_error is None
+    if not (single_ready or multi_ready):
+        logger.error("invocation: 503 model(s) not ready. err=%s", app.state.model_error)
+        raise HTTPException(status_code=503, detail=app.state.model_error or "Model(s) not loaded")
 
     try:
         payload = await request.json()
@@ -148,6 +151,7 @@ async def invocation(request: Request) -> JSONResponse:
     # Resolve which model to use (single or multi-model mode)
     model = None
     models_dict: Dict[str, Any] = getattr(app.state, "models", {}) or {}
+    logger.debug("invocation: models available=%d", len(models_dict))
     if models_dict:
         # Try to pick from query/body
         dataset = None
