@@ -399,46 +399,62 @@ def append_or_create_metrics_csv(metrics_dir: Path, new_metrics: pd.DataFrame) -
 
 
 def save_train_test_splits(splits_dir: Path, dataset_name: str,
-                           X_train_df: pd.DataFrame, X_test_df: pd.DataFrame,
+                           X_train: np.ndarray, X_test: np.ndarray,
                            y_train: pd.Series, y_test: pd.Series,
-                           preproc: ColumnTransformer) -> None:
-    """Save train/test splits as parquet files for later use"""
+                           preproc: ColumnTransformer,
+                           feature_names: List[str]) -> None:
+    """Save train/test splits as parquet files for later use.
+
+    X_* are expected to be POST-PREPROCESSING feature matrices (numeric).
+    y_* are the corresponding target series (kept as pandas Series to retain the name).
+    """
 
     # Create dataset-specific subdirectory
     dataset_splits_dir = splits_dir / dataset_name
     dataset_splits_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save the feature splits
-    X_train_df.to_parquet(dataset_splits_dir / "X_train.parquet", index=False)
-    X_test_df.to_parquet(dataset_splits_dir / "X_test.parquet", index=False)
+    # Build DataFrames for X using provided feature names (or fallback generic names)
+    if feature_names and len(feature_names) == (X_train.shape[1] if X_train.ndim == 2 else 0):
+        x_columns = list(feature_names)
+    else:
+        n_features = X_train.shape[1] if X_train.ndim == 2 else X_train.size
+        x_columns = [f"f{i}" for i in range(n_features)]
+        logging.warning("Feature names not available or mismatch; using generic names f0..f%d", n_features - 1)
+
+    X_train_df_proc = pd.DataFrame(X_train, columns=x_columns)
+    X_test_df_proc = pd.DataFrame(X_test, columns=x_columns)
+
+    # Save the feature splits (post-preprocessing)
+    X_train_df_proc.to_parquet(dataset_splits_dir / "X_train.parquet", index=False)
+    X_test_df_proc.to_parquet(dataset_splits_dir / "X_test.parquet", index=False)
 
     # Save target variables
     y_train.to_frame().to_parquet(dataset_splits_dir / "y_train.parquet", index=False)
     y_test.to_frame().to_parquet(dataset_splits_dir / "y_test.parquet", index=False)
 
-    # Save the preprocessor
+    # Save the preprocessor (to allow reproducing the transform if needed elsewhere)
     with open(dataset_splits_dir / "preprocessor.pkl", 'wb') as f:
         pickle.dump(preproc, f)
 
     # Save split info as JSON
     split_info = {
         "dataset_name": dataset_name,
-        "train_samples": len(X_train_df),
-        "test_samples": len(X_test_df),
-        "features": X_train_df.shape[1],
+        "train_samples": int(X_train_df_proc.shape[0]),
+        "test_samples": int(X_test_df_proc.shape[0]),
+        "features": int(X_train_df_proc.shape[1]),
         "positive_samples_train": int(y_train.sum()),
         "positive_samples_test": int(y_test.sum()),
         "positive_ratio_train": float(y_train.mean()),
         "positive_ratio_test": float(y_test.mean()),
-        "test_size": len(X_test_df) / (len(X_train_df) + len(X_test_df)),
+        "test_size": float(X_test_df_proc.shape[0] / max(1, (X_train_df_proc.shape[0] + X_test_df_proc.shape[0]))),
         "timestamp": datetime.now().isoformat(timespec='seconds')
     }
 
     with open(dataset_splits_dir / "split_info.json", 'w') as f:
         json.dump(split_info, f, indent=2)
 
-    logging.info("Saved train/test splits to: %s", dataset_splits_dir)
-    logging.info("Split info: %d train, %d test samples", len(X_train_df), len(X_test_df))
+    logging.info("Saved PREPROCESSED train/test splits to: %s", dataset_splits_dir)
+    logging.info("Split info: %d train, %d test samples, %d features", X_train_df_proc.shape[0], X_test_df_proc.shape[0], X_train_df_proc.shape[1])
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -494,9 +510,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         len(y_train),
     )
 
-    # Save train/test splits if requested
+    # Save train/test splits if requested (save POST-PREPROCESSING features)
     if args.save_splits:
-        save_train_test_splits(splits_dir, dataset_name, X_train_df, X_test_df, y_train_series, y_test_series, preproc)
+        save_train_test_splits(splits_dir, dataset_name, X_train, X_test, y_train_series, y_test_series, preproc, feat_names)
 
     pos_weight = compute_pos_weight(y_train)
     logging.info("Computed positive class weight (neg/pos): %.3f", pos_weight)
