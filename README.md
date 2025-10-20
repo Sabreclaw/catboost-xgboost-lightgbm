@@ -82,7 +82,10 @@ The fastest way to get going is to train, serve, and test — in that order. You
   ```bash
   bash start.sh test http://localhost:8000 200 20 2m DEBUG
   ```
-  Ensure the test split exists at test-server/test_files/splits/<dataset>/X_test.parquet (produced when you trained with --save-splits). You can change the dataset used for testing via the prompt when running start.sh test.
+  Ensure the test split exists at test-server/test_files/splits/<dataset>/X_test.parquet.
+  - Fast path: run `bash start.sh train` to train the example datasets and generate splits with `--save-splits`.
+  - If you already trained, copy the split from `experiment-results/splits/<dataset>/X_test.parquet` to `test-server/test_files/splits/<dataset>/`.
+  You can change the dataset used for testing via the prompt when running `start.sh test`.
 
 Notes
 - Model server expects artifacts named <dataset>_<Algo>.pkl under model-server/models when serving. The training step saves them under experiment-results/models; copy whichever you want to serve into model-server/models/.
