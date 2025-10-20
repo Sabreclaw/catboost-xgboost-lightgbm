@@ -275,10 +275,10 @@ test_mode() {
   fi
 
   # Preflight: Ensure split test parquet exists
-  local X_PATH="$TEST_DIR/test_files/splits/${DATASET_NAME_TEST}/X_test.parquet"
+  local X_PATH="$TEST_DIR/../experiment-results/splits/${DATASET_NAME_TEST}/X_test.parquet"
   if [[ ! -f "$X_PATH" ]]; then
     echo "ERROR: Test split not found: $X_PATH" >&2
-    echo "Ensure train/test splits exist under test-server/test_files/splits/<dataset>/X_test.parquet" >&2
+    echo "Ensure train/test splits exist under ($REPO_ROOT)/experiment-results/splits/<dataset>/X_test.parquet" >&2
     exit 1
   fi
 

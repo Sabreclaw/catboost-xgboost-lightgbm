@@ -27,7 +27,7 @@ fi
 
 # Preflight: Resolve Parquet split path (dataset required)
 DATASET_NAME="${DATASET_NAME:-credit_card_transactions}"
-X_PATH="$SCRIPT_DIR/test_files/splits/${DATASET_NAME}/X_test.parquet"
+X_PATH="$SCRIPT_DIR/../experiment-results/splits/${DATASET_NAME}/X_test.parquet"
 
 if [[ ! -f "$X_PATH" ]]; then
   echo "ERROR: Test parquet not found: $X_PATH" >&2
