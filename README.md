@@ -9,7 +9,7 @@ A compact project to serve and test gradient boosting models (CatBoost, LightGBM
 - [Flow diagram](#flow-diagram)
 - [Clone (with submodules)](#clone-with-submodules)
 - [Large files (Git LFS)](#large-files-git-lfs)
-- [Asset setup (zip)](#asset-setup-zip)
+- [Training](#training)
 - [Quick start (serve and test)](#quick-start-serve-and-test)
 - [References](#references)
 
@@ -17,7 +17,7 @@ A compact project to serve and test gradient boosting models (CatBoost, LightGBM
 This repository contains:
 - model-server/ – a FastAPI inference server that loads a selected model and serves predictions.
 - test-server/ – a Locust load-testing setup that sends single-row POST /invocation requests to the model server (no /health checks from Locust).
-- fraud-detection-with-catboost-xgboost-lightgbm.ipynb – a notebook exploring/modeling fraud detection.
+- training-scripts/ – a standalone training CLI (training.py) to train CatBoost, LightGBM, and XGBoost models and optionally save dataset splits.
 
 For component-specific details, see:
 - Model server: [model-server/README.md](model-server/README.md)
@@ -32,10 +32,12 @@ Before running the server or tests, ensure the following are installed on your s
 ## Repository structure
 ```
 repo-root/
-├─ model-server/           # FastAPI app and model loading
-├─ test-server/            # Locust scenarios, config, helpers
-├─ credit_card_transactions.csv
-└─ fraud-detection-with-catboost-xgboost-lightgbm.ipynb
+├─ model-server/           # FastAPI app and models (model-server/models/*.pkl)
+├─ test-server/            # Locust scenarios, config, helpers, test_files/splits/<dataset>/
+├─ training-scripts/       # Training CLI (training.py)
+├─ experiment-results/     # Metrics, trained models, and splits saved by training
+├─ start.sh                # Helper script (serve/test/train)
+├─ requirements.txt
 ```
 
 ## Flow diagram
@@ -95,9 +97,9 @@ git submodule update --init --recursive
 This repository stores large artifacts (datasets and pre-trained models) using Git LFS. After cloning, Git LFS must be installed and the LFS files pulled.
 
 LFS-tracked files include (not exhaustive):
-- models.zip → model-server/models/
-- test_files.zip → test-server/test_files/
-- credit_card_transactions.csv.zip → ./credit_card_transactions.csv
+- model-server/models/*.pkl (pickled models)
+- test-server/test_files/splits/** (dataset split parquet files)
+- *.parquet datasets
 
 ### Install Git LFS
 Option A — package manager:
@@ -155,48 +157,44 @@ git lfs fetch --all
 git lfs checkout   # or: git lfs pull
 ```
 
-If Git LFS cannot be installed, the large assets can be downloaded manually (from Releases or other distribution) and placed as described in [Asset setup (zip)](#asset-setup-zip).
 
-## Asset setup (zip)
-Some large files are provided as .zip archives. Use the helper script to decompress them into the expected locations.
+## Training
+You can train the supported models on all datasets using the training CLI or the helper script.
 
-Archives and target locations:
-- models.zip → model-server/models/
-- test_files.zip → test-server/test_files/
-- credit_card_transactions.csv.zip → ./credit_card_transactions.csv
-
-Run the setup script (requires the zip/unzip tool):
+Option A — one-liner helper:
 ```bash
-# from repository root
-bash setup.sh
+bash start.sh train
 ```
+This will create/activate ./.venv if needed, install requirements if missing, and run four training jobs, saving metrics and train/test splits under experiment-results/splits/<dataset>/.
 
-If unzip is not installed, install zip/unzip tools first:
-- macOS (Homebrew):
+Option B — direct commands (from repository root):
 ```bash
-brew install zip
-```
-- Ubuntu/Debian:
-```bash
-sudo apt-get update && sudo apt-get install -y unzip
-```
-- Fedora:
-```bash
-sudo dnf install -y unzip
-```
-- CentOS/RHEL (yum):
-```bash
-sudo yum install -y unzip
-```
+python training-scripts/training.py \
+    --data diabetic_data.parquet \
+    --target readmitted \
+    --positive-label ">30" \
+    --test-size 0.2 \
+    --save-splits
 
-Manual alternative (without setup.sh):
-- Extract models.zip and place the resulting models/ folder under model-server/ so that you have model-server/models/ with the model .pkl files inside.
-- Extract test_files.zip and place the resulting test_files/ folder under test-server/ so that you have test-server/test_files/ with X_test.csv (and optionally y_test.csv).
-- Extract credit_card_transactions.csv.zip at the repository root so that you have ./credit_card_transactions.csv.
+python training-scripts/training.py \
+    --data credit_card_transactions.parquet \
+    --target is_fraud \
+    --test-size 0.2 \
+    --drop-cols "Unnamed: 0" first last street city state zip lat long dob trans_num merch_zipcode merchant job \
+    --save-splits
 
-After extraction, it is possible to:
-- Start the model server (see model-server/README.md) — ensure LOAD_MODEL is set (catboost/lgbm/xgboost) and corresponding .pkl exists in model-server/models/.
-- Run load tests (see test-server/README.md) — ensure test-server/test_files/X_test.csv exists.
+python training-scripts/training.py \
+    --data UNSW_NB15_merged.parquet \
+    --target label \
+    --test-size 0.2 \
+    --save-splits
+
+python training-scripts/training.py \
+    --data healthcare-dataset-stroke-data.parquet \
+    --target stroke \
+    --test-size 0.2 \
+    --save-splits
+```
 
 ## Quick start (serve and test)
 A helper script is available at the repository root to streamline serving the model or running load tests. It uses interactive prompts allowing confirmation or skipping of each step.
@@ -213,9 +211,19 @@ bash start.sh serve --host 127.0.0.1 --port 8000 --model lgbm
 - Prompts include:
   - Create ./.venv at repository root? (skip to use system Python)
   - Install dependencies from ./requirements.txt?
+  - Choose DATASET_NAME (credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged)
   - Choose LOAD_MODEL (catboost/lgbm/xgboost)
   - Choose host/port
   - Enable debug logs? (sets LOG_LEVEL=DEBUG and passes --log-level debug to uvicorn)
+
+  Run the server manually (without start.sh):
+  ```bash
+  # from model-server directory
+  cd model-server
+  export DATASET_NAME=credit_card_transactions   # or diabetic, healthcare-dataset-stroke, UNSW_NB15_merged
+  export LOAD_MODEL=catboost                     # or lgbm, xgboost
+  uvicorn app.main:app --host 0.0.0.0 --port 8000
+  ```
 
 Run Locust load tests (headless):
 ```bash

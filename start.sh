@@ -24,6 +24,7 @@ usage() {
 Usage:
   $0 serve [--host HOST] [--port PORT] [--model MODEL_KEY]
   $0 test  [HOST] [USERS] [SPAWN_RATE] [DURATION] [LOGLEVEL]
+  $0 train
 
 Examples:
   # Serve with prompts (defaults host=0.0.0.0, port=8000, model=catboost)
@@ -34,6 +35,9 @@ Examples:
 
   # Run load test (headless)
   bash $0 test http://localhost:8000 200 20 2m DEBUG
+
+  # Train all datasets with default options (saves splits)
+  bash $0 train
 EOF
 }
 
@@ -285,6 +289,103 @@ test_mode() {
   fi
 }
 
+train_mode() {
+  echo "== Train mode (all datasets) =="
+  ensure_python3
+
+  # Ensure virtual environment
+  if [[ -d "$VENV_DIR" ]]; then
+    echo "Virtual environment already exists at: $VENV_DIR"
+  else
+    if confirm "Create virtual environment at ./.venv?" default_y; then
+      (cd "$REPO_ROOT" && python3 -m venv .venv)
+      echo "Created venv at $VENV_DIR"
+    else
+      echo "Skipping venv creation (will use system Python)"
+    fi
+  fi
+
+  # Activate venv if present
+  if [[ -f "$VENV_DIR/bin/activate" ]]; then
+    # shellcheck disable=SC1090
+    source "$VENV_DIR/bin/activate"
+    PYBIN="python"
+    PIPBIN="pip"
+  else
+    PYBIN="python3"
+    PIPBIN="pip3"
+  fi
+
+  # Install requirements if needed
+  REQ_FILE="$REPO_ROOT/requirements.txt"
+  MISSING_PKGS="$($PYBIN - "$REQ_FILE" <<'PY'
+import sys, re
+try:
+    from importlib import metadata
+except ImportError:
+    import importlib_metadata as metadata  # type: ignore
+path = sys.argv[1]
+missing = []
+with open(path, 'r') as f:
+    for line in f:
+        s = line.strip()
+        if not s or s.startswith('#') or s.startswith('-r ') or s.startswith('--requirement'):
+            continue
+        m = re.match(r'^([A-Za-z0-9_.-]+)', s)
+        if not m:
+            continue
+        name = m.group(1)
+        try:
+            metadata.version(name)
+        except metadata.PackageNotFoundError:
+            missing.append(name)
+print(",".join(missing))
+PY
+)"
+  if [[ -n "$MISSING_PKGS" ]]; then
+    echo "Installing missing packages: $MISSING_PKGS"
+    $PIPBIN install -r "$REQ_FILE"
+  fi
+
+  TRAIN_SCRIPT="$REPO_ROOT/training-scripts/training.py"
+  if [[ ! -f "$TRAIN_SCRIPT" ]]; then
+    echo "ERROR: Training script not found: $TRAIN_SCRIPT" >&2
+    exit 1
+  fi
+
+  echo "Running training for diabetic_data.parquet"
+  $PYBIN "$TRAIN_SCRIPT" \
+    --data "$REPO_ROOT/diabetic_data.parquet" \
+    --target readmitted \
+    --positive-label ">30" \
+    --test-size 0.2 \
+    --save-splits || { echo "Training failed for diabetic_data"; exit 1; }
+
+  echo "Running training for credit_card_transactions.parquet"
+  $PYBIN "$TRAIN_SCRIPT" \
+    --data "$REPO_ROOT/credit_card_transactions.parquet" \
+    --target is_fraud \
+    --test-size 0.2 \
+    --drop-cols "Unnamed: 0" first last street city state zip lat long dob trans_num merch_zipcode merchant job \
+    --save-splits || { echo "Training failed for credit_card_transactions"; exit 1; }
+
+  echo "Running training for UNSW_NB15_merged.parquet"
+  $PYBIN "$TRAIN_SCRIPT" \
+    --data "$REPO_ROOT/UNSW_NB15_merged.parquet" \
+    --target label \
+    --test-size 0.2 \
+    --save-splits || { echo "Training failed for UNSW_NB15_merged"; exit 1; }
+
+  echo "Running training for healthcare-dataset-stroke-data.parquet"
+  $PYBIN "$TRAIN_SCRIPT" \
+    --data "$REPO_ROOT/healthcare-dataset-stroke-data.parquet" \
+    --target stroke \
+    --test-size 0.2 \
+    --save-splits || { echo "Training failed for healthcare-dataset-stroke-data"; exit 1; }
+
+  echo "All trainings completed. Splits are saved under experiment-results/splits/<dataset>/"
+}
+
 main() {
   if [[ $# -lt 1 ]]; then
     usage; exit 1
@@ -293,6 +394,7 @@ main() {
   case "$mode" in
     serve) serve_mode "$@" ;;
     test)  test_mode  "$@" ;;
+    train) train_mode "$@" ;;
     -h|--help) usage ;;
     *) echo "Unknown mode: $mode" >&2; usage; exit 1 ;;
   esac

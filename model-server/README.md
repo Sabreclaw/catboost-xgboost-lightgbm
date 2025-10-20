@@ -117,8 +117,8 @@ Example response:
 {
   "status": "ok",
   "loaded": true,
-  "model": "catboost",
-  "model_path": "/absolute/path/to/models/Catboost_model.pkl",
+  "model": "credit_card_transactions/catboost",
+  "model_path": "/absolute/path/to/model-server/models/credit_card_transactions_CatBoost.pkl",
   "error": null
 }
 ```
@@ -195,11 +195,10 @@ Note: If the model does not implement the requested method, the server returns H
 
 ## Troubleshooting
 - `GET /health` shows `error`:
+  - Ensure `DATASET_NAME` is set (e.g., `credit_card_transactions`, `diabetic`, `healthcare-dataset-stroke`, `UNSW_NB15_merged`).
   - Ensure `LOAD_MODEL` is set to one of: `catboost`, `lgbm`, `xgboost`.
-  - Ensure the matching pickle file exists in `./models/` with the exact filename:
-    - `Catboost_model.pkl` for `catboost`
-    - `LGBM_model.pkl` for `lgbm`
-    - `XGBoost_model.pkl` for `xgboost`
+  - Ensure the matching pickle exists in `./models/` using the convention `<dataset>_<Algo>.pkl`, where Algo is one of `CatBoost`, `LightGBM`, `XGBoost`.
+    - Examples: `credit_card_transactions_CatBoost.pkl`, `diabetic_LightGBM.pkl`, `UNSW_NB15_merged_XGBoost.pkl`.
   - If the pickle requires extra dependencies, install them (catboost/xgboost/lightgbm).
 
 - `POST /invocation` returns `400 Invalid JSON body`:
@@ -227,6 +226,7 @@ Options:
 
 Examples (bash/zsh):
 ```bash
+export DATASET_NAME=credit_card_transactions
 export LOAD_MODEL=catboost
 export LOG_LEVEL=DEBUG           # or: export DEBUG=1
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug
