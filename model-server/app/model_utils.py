@@ -17,7 +17,7 @@ def resolve_model_path() -> Tuple[Optional[str], Optional[str], Optional[str]]:
       - error: error string if could not resolve
     """
     # repo root is the parent of the 'app' directory containing this file
-    repo_root = Path(__file__).resolve().parent.parent
+    repo_root = Path(__file__).resolve().parent.parent.parent
     models_dir = repo_root / "experiment-results" / "models"
 
     # Required: dataset name

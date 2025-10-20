@@ -196,10 +196,10 @@ PY
     xgboost) SUFFIX="XGBoost" ;;
     *) echo "ERROR: Unsupported model key: $MODEL_KEY (use catboost|lgbm|xgboost)" >&2; exit 1 ;;
   esac
-  local MODEL_PATH="$MODEL_DIR/models/${DATASET_NAME}_${SUFFIX}.pkl"
+  local MODEL_PATH="$REPO_ROOT/experiment-results/models/${DATASET_NAME}_${SUFFIX}.pkl"
   if [[ ! -f "$MODEL_PATH" ]]; then
     echo "ERROR: Model file not found: $MODEL_PATH" >&2
-    echo "Ensure the model exists in model-server/models/ named '<dataset>_<Algo>.pkl'." >&2
+    echo "Ensure the model exists in$REPO_ROOT/experiment-results/models/ named '<dataset>_<Algo>.pkl'." >&2
     exit 1
   fi
 
