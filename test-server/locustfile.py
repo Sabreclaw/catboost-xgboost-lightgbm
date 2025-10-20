@@ -26,6 +26,7 @@ def load_rows_from_parquet(pq_path: Path) -> List[Dict]:
 
 # Resolve base dir
 BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parent
 
 # Load optional config.json
 import json
@@ -41,10 +42,34 @@ if CONFIG_PATH.exists():
 
 # Dataset selection: ENV wins over config; default to credit_card_transactions
 DATASET_NAME = os.getenv("DATASET_NAME") or CONFIG.get("dataset_name") or "credit_card_transactions"
-X_TEST_PATH = BASE_DIR / "test_files" / "splits" / DATASET_NAME / "X_test.parquet"
+
+# Primary path under test-server/test_files; fallback to experiment-results if not found or empty
+X_TEST_PRIMARY = BASE_DIR / "test_files" / "splits" / DATASET_NAME / "X_test.parquet"
+X_TEST_FALLBACK = REPO_ROOT / "experiment-results" / "splits" / DATASET_NAME / "X_test.parquet"
+
+# Track which path was used
+SELECTED_X_PATH: Optional[Path] = None
+
+
+def load_rows_with_fallback(primary: Path, fallback: Path) -> List[Dict]:
+    global SELECTED_X_PATH
+    rows = load_rows_from_parquet(primary)
+    if rows:
+        SELECTED_X_PATH = primary
+        print(f"[locustfile] Using test rows from: {primary}")
+        return rows
+    if primary != fallback:
+        alt_rows = load_rows_from_parquet(fallback)
+        if alt_rows:
+            SELECTED_X_PATH = fallback
+            print(f"[locustfile] Using fallback test rows from: {fallback}")
+            return alt_rows
+    SELECTED_X_PATH = None
+    return []
+
 
 # Preload rows once at import time
-X_ROWS: List[Dict] = load_rows_from_parquet(X_TEST_PATH)
+X_ROWS: List[Dict] = load_rows_with_fallback(X_TEST_PRIMARY, X_TEST_FALLBACK)
 
 # Prediction method: env var overrides config
 _config_pred_method = CONFIG.get("pred_method") if isinstance(CONFIG, dict) else None
@@ -54,7 +79,10 @@ PRED_METHOD: Optional[str] = os.getenv("PRED_METHOD") or _config_pred_method  # 
 @events.init.add_listener
 def on_locust_init(environment, **kwargs):
     if not X_ROWS:
-        print(f"[locustfile] WARNING: No rows loaded from {X_TEST_PATH}. Load test will run but no /invocation calls will be made.")
+        print(
+            f"[locustfile] WARNING: No rows loaded. Looked for: {X_TEST_PRIMARY} and {X_TEST_FALLBACK}. "
+            "Load test will run but no /invocation calls will be made."
+        )
 
 
 class InferenceUser(HttpUser):
