@@ -15,15 +15,15 @@ Index
 - [Debug logging](#debug-logging)
 
 - Models are expected under the repository `models` folder.
-- Select which model to load via the `LOAD_MODEL` environment variable.
+- Select which dataset and algorithm to load via `DATASET_NAME` and `LOAD_MODEL` environment variables.
 - Two endpoints are provided:
   - `GET /health` – server and model status
   - `POST /invocation` – run inference
 
-Supported model keys and filenames (relative to `./models`):
-- `catboost` → `Catboost_model.pkl`
-- `lgbm` → `LGBM_model.pkl`
-- `xgboost` → `XGBoost_model.pkl`
+Model filename convention (relative to `./models`):
+- `<dataset_name>_<Algo>.pkl`
+  - Algo ∈ {`CatBoost`, `LightGBM`, `XGBoost`}
+  - Example: `credit_card_transactions_CatBoost.pkl`, `diabetic_LightGBM.pkl`
 
 FastAPI interactive docs are available at:
 - Swagger UI: http://localhost:8000/docs
@@ -47,9 +47,18 @@ model-server/
 ├─ app/
 │  └─ main.py          # FastAPI application
 ├─ models/
-│  ├─ Catboost_model.pkl
-│  ├─ LGBM_model.pkl
-│  └─ XGBoost_model.pkl
+│  ├─ credit_card_transactions_CatBoost.pkl
+│  ├─ credit_card_transactions_LightGBM.pkl
+│  ├─ credit_card_transactions_XGBoost.pkl
+│  ├─ diabetic_CatBoost.pkl
+│  ├─ diabetic_LightGBM.pkl
+│  ├─ diabetic_XGBoost.pkl
+│  ├─ healthcare-dataset-stroke_CatBoost.pkl
+│  ├─ healthcare-dataset-stroke_LightGBM.pkl
+│  ├─ healthcare-dataset-stroke_XGBoost.pkl
+│  ├─ UNSW_NB15_merged_CatBoost.pkl
+│  ├─ UNSW_NB15_merged_LightGBM.pkl
+│  └─ UNSW_NB15_merged_XGBoost.pkl
 └─ requirements.txt
 ```
 
@@ -81,21 +90,23 @@ pip install lightgbm     # for LightGBM pickles
 ```
 
 ## Run the server
-Set which model to load using `LOAD_MODEL` and start uvicorn.
+Set which dataset and model to load using `DATASET_NAME` and `LOAD_MODEL`, then start uvicorn.
 
 macOS/Linux (bash/zsh):
 ```bash
-export LOAD_MODEL=catboost   # or lgbm, xgboost
+export DATASET_NAME=credit_card_transactions   # or diabetic, healthcare-dataset-stroke, UNSW_NB15_merged
+export LOAD_MODEL=catboost                     # or lgbm, xgboost
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Windows (PowerShell):
 ```powershell
-$env:LOAD_MODEL = "catboost"  # or lgbm, xgboost
+$env:DATASET_NAME = "credit_card_transactions"  # or diabetic, healthcare-dataset-stroke, UNSW_NB15_merged
+$env:LOAD_MODEL    = "catboost"                  # or lgbm, xgboost
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-If everything is OK, the server will load the corresponding `*.pkl` from `./models` at startup.
+If everything is OK, the server will load `<dataset>_<Algo>.pkl` from `./models` at startup.
 
 ## Health check
 ```bash

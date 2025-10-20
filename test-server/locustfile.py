@@ -7,26 +7,24 @@ import pandas as pd
 from locust import HttpUser, task, between, events
 
 
-def load_rows_from_csv(csv_path: Path) -> List[Dict]:
-    if not csv_path.exists():
-        print(f"[locustfile] WARNING: Test file not found: {csv_path}")
+def load_rows_from_parquet(pq_path: Path) -> List[Dict]:
+    if not pq_path.exists():
+        print(f"[locustfile] WARNING: Test parquet not found: {pq_path}")
         return []
     try:
-        df = pd.read_csv(csv_path)
-        if df.shape[1] <= 1:
-            print("[locustfile] WARNING: X_test.csv must have at least 2 columns (first is id).")
+        df = pd.read_parquet(pq_path)
+        if df.shape[1] < 1:
+            print("[locustfile] WARNING: X_test.parquet has no feature columns.")
             return []
-        # Ignore the first column (id)
-        feature_cols = df.columns[1:]
-        rows = df[feature_cols].to_dict(orient="records")
-        print(f"[locustfile] Loaded {len(rows)} rows and {len(feature_cols)} features from {csv_path}")
+        rows = df.to_dict(orient="records")
+        print(f"[locustfile] Loaded {len(rows)} rows and {df.shape[1]} features from {pq_path}")
         return rows
     except Exception as e:
-        print(f"[locustfile] ERROR: Failed to read {csv_path}: {e}")
+        print(f"[locustfile] ERROR: Failed to read {pq_path}: {e}")
         return []
 
 
-# Resolve test files directory relative to this file
+# Resolve base dir
 BASE_DIR = Path(__file__).resolve().parent
 
 # Load optional config.json
@@ -41,19 +39,12 @@ if CONFIG_PATH.exists():
     except Exception as e:
         print(f"[locustfile] WARNING: Failed to read config.json: {e}")
 
-# Test files
-default_x_path = Path("test_files") / "X_test.csv"
-config_x_path = (
-    CONFIG.get("test_files", {}).get("x_test_path") if isinstance(CONFIG.get("test_files", {}), dict) else None
-)
-if config_x_path:
-    p = Path(config_x_path)
-    X_TEST_PATH = p if p.is_absolute() else (BASE_DIR / p)
-else:
-    X_TEST_PATH = BASE_DIR / default_x_path
+# Dataset selection: ENV wins over config; default to credit_card_transactions
+DATASET_NAME = os.getenv("DATASET_NAME") or CONFIG.get("dataset_name") or "credit_card_transactions"
+X_TEST_PATH = BASE_DIR / "test_files" / "splits" / DATASET_NAME / "X_test.parquet"
 
 # Preload rows once at import time
-X_ROWS: List[Dict] = load_rows_from_csv(X_TEST_PATH)
+X_ROWS: List[Dict] = load_rows_from_parquet(X_TEST_PATH)
 
 # Prediction method: env var overrides config
 _config_pred_method = CONFIG.get("pred_method") if isinstance(CONFIG, dict) else None
@@ -63,7 +54,7 @@ PRED_METHOD: Optional[str] = os.getenv("PRED_METHOD") or _config_pred_method  # 
 @events.init.add_listener
 def on_locust_init(environment, **kwargs):
     if not X_ROWS:
-        print("[locustfile] WARNING: No rows loaded from X_test.csv. Load test will run but no /invocation calls will be made.")
+        print(f"[locustfile] WARNING: No rows loaded from {X_TEST_PATH}. Load test will run but no /invocation calls will be made.")
 
 
 class InferenceUser(HttpUser):

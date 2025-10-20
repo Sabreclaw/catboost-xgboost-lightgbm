@@ -1,0 +1,12 @@
+{
+  "dataset_name": "diabetic",
+  "train_samples": 81412,
+  "test_samples": 20354,
+  "features": 49,
+  "positive_samples_train": 28436,
+  "positive_samples_test": 7109,
+  "positive_ratio_train": 0.3492851176730703,
+  "positive_ratio_test": 0.3492679571582981,
+  "test_size": 0.20000786117170763,
+  "timestamp": "2025-10-20T19:00:15"
+}

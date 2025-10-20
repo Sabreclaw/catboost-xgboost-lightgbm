@@ -154,13 +154,20 @@ PY
     fi
   fi
 
-  # Step 4: Choose model key
+  # Step 4: Choose dataset
+  local DATASET_NAME="${DATASET_NAME:-credit_card_transactions}"
+  read -r -p "Select DATASET_NAME (credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged) [${DATASET_NAME}]: " DATASET_IN || true
+  if [[ -n "${DATASET_IN:-}" ]]; then
+    DATASET_NAME="$DATASET_IN"
+  fi
+
+  # Step 5: Choose model key
   read -r -p "Select LOAD_MODEL (catboost/lgbm/xgboost) [${MODEL_KEY}]: " MODEL_IN || true
   if [[ -n "${MODEL_IN:-}" ]]; then
     MODEL_KEY="$MODEL_IN"
   fi
 
-  # Step 5: Choose host/port
+  # Step 6: Choose host/port
   read -r -p "Server host [${HOST}]: " HOST_IN || true
   if [[ -n "${HOST_IN:-}" ]]; then
     HOST="$HOST_IN"
@@ -170,35 +177,30 @@ PY
     PORT="$PORT_IN"
   fi
 
-  # Step 6: Debug logging?
+  # Step 7: Debug logging?
   DEBUG_FLAGS=""
   if confirm "Enable DEBUG logging?" default_n; then
     export LOG_LEVEL=DEBUG
     DEBUG_FLAGS="--log-level debug"
   fi
 
-  # Preflight: Verify model file exists for selected MODEL_KEY (auto-run setup if missing)
-  local MODEL_FILE=""
+  # Preflight: Verify model file exists for selected DATASET_NAME + MODEL_KEY
+  local SUFFIX=""
   case "${MODEL_KEY,,}" in
-    catboost) MODEL_FILE="Catboost_model.pkl" ;;
-    lgbm) MODEL_FILE="LGBM_model.pkl" ;;
-    xgboost) MODEL_FILE="XGBoost_model.pkl" ;;
+    catboost) SUFFIX="CatBoost" ;;
+    lgbm) SUFFIX="LightGBM" ;;
+    xgboost) SUFFIX="XGBoost" ;;
     *) echo "ERROR: Unsupported model key: $MODEL_KEY (use catboost|lgbm|xgboost)" >&2; exit 1 ;;
   esac
-  local MODEL_PATH="$MODEL_DIR/models/$MODEL_FILE"
+  local MODEL_PATH="$MODEL_DIR/models/${DATASET_NAME}_${SUFFIX}.pkl"
   if [[ ! -f "$MODEL_PATH" ]]; then
-    echo "Model file not found: $MODEL_PATH" >&2
-    echo "Attempting to run setup.sh to extract assets..." >&2
-    (cd "$REPO_ROOT" && bash ./setup.sh)
-  fi
-  # Re-check after setup
-  if [[ ! -f "$MODEL_PATH" ]]; then
-    echo "ERROR: Model file still not found: $MODEL_PATH" >&2
-    echo "Hint: ensure models.zip is present at repo root or place the correct file in model-server/models/." >&2
+    echo "ERROR: Model file not found: $MODEL_PATH" >&2
+    echo "Ensure the model exists in model-server/models/ named '<dataset>_<Algo>.pkl'." >&2
     exit 1
   fi
 
-  echo "Starting server with: LOAD_MODEL=$MODEL_KEY host=$HOST port=$PORT"
+  echo "Starting server with: DATASET_NAME=$DATASET_NAME LOAD_MODEL=$MODEL_KEY host=$HOST port=$PORT"
+  export DATASET_NAME="$DATASET_NAME"
   export LOAD_MODEL="$MODEL_KEY"
   cd "$MODEL_DIR"
   exec uvicorn app.main:app --host "$HOST" --port "$PORT" $DEBUG_FLAGS
@@ -261,47 +263,23 @@ test_mode() {
     exit 1
   fi
 
-  # Preflight: Ensure test file exists (auto-run setup if missing)
-  X_DEFAULT_PATH="$TEST_DIR/test_files/X_test.csv"
-  X_PATH="$X_DEFAULT_PATH"
-  if [[ -f "$TEST_DIR/config.json" ]]; then
-    CFG_X_PATH=$(python3 - "$TEST_DIR/config.json" <<'PY'
-import json, os, sys
-cfg_path = sys.argv[1]
-try:
-    with open(cfg_path, 'r') as f:
-        cfg = json.load(f)
-    x = None
-    tf = cfg.get('test_files')
-    if isinstance(tf, dict):
-        x = tf.get('x_test_path')
-    if x:
-        if not os.path.isabs(x):
-            x = os.path.normpath(os.path.join(os.path.dirname(cfg_path), x))
-        print(x)
-except Exception:
-    pass
-PY
-)
-    if [[ -n "${CFG_X_PATH:-}" ]]; then
-      X_PATH="$CFG_X_PATH"
-    fi
+  # Choose dataset for testing (defaults to the same as serve-mode default)
+  local DATASET_NAME_TEST="${DATASET_NAME:-credit_card_transactions}"
+  read -r -p "Select DATASET_NAME for testing (credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged) [${DATASET_NAME_TEST}]: " DATASET_TEST_IN || true
+  if [[ -n "${DATASET_TEST_IN:-}" ]]; then
+    DATASET_NAME_TEST="$DATASET_TEST_IN"
   fi
 
+  # Preflight: Ensure split test parquet exists
+  local X_PATH="$TEST_DIR/test_files/splits/${DATASET_NAME_TEST}/X_test.parquet"
   if [[ ! -f "$X_PATH" ]]; then
-    echo "Test file not found: $X_PATH" >&2
-    echo "Attempting to run setup.sh to extract test files..." >&2
-    (cd "$REPO_ROOT" && bash ./setup.sh)
-  fi
-  # Re-check after setup
-  if [[ ! -f "$X_PATH" ]]; then
-    echo "ERROR: Test file still not found: $X_PATH" >&2
-    echo "Hint: ensure test_files.zip is present at repo root or place X_test.csv under test-server/test_files/." >&2
+    echo "ERROR: Test split not found: $X_PATH" >&2
+    echo "Ensure train/test splits exist under test-server/test_files/splits/<dataset>/X_test.parquet" >&2
     exit 1
   fi
 
   if confirm "Run Locust now?" default_y; then
-    (cd "$TEST_DIR" && bash ./run_locust_headless.sh "$HOST" "$USERS" "$SPAWN_RATE" "$DURATION" "$LOGLEVEL")
+    (cd "$TEST_DIR" && DATASET_NAME="$DATASET_NAME_TEST" bash ./run_locust_headless.sh "$HOST" "$USERS" "$SPAWN_RATE" "$DURATION" "$LOGLEVEL")
   else
     echo "Skipped running Locust."
   fi

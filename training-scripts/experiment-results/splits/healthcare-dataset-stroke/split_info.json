@@ -1,0 +1,12 @@
+{
+  "dataset_name": "healthcare-dataset-stroke",
+  "train_samples": 4088,
+  "test_samples": 1022,
+  "features": 11,
+  "positive_samples_train": 199,
+  "positive_samples_test": 50,
+  "positive_ratio_train": 0.04867906066536203,
+  "positive_ratio_test": 0.04892367906066536,
+  "test_size": 0.2,
+  "timestamp": "2025-10-20T19:01:16"
+}

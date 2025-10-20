@@ -1,0 +1,12 @@
+{
+  "dataset_name": "credit_card_transactions",
+  "train_samples": 1037340,
+  "test_samples": 259335,
+  "features": 10,
+  "positive_samples_train": 6005,
+  "positive_samples_test": 1501,
+  "positive_ratio_train": 0.00578884454470087,
+  "positive_ratio_test": 0.005787880540613492,
+  "test_size": 0.2,
+  "timestamp": "2025-10-20T19:00:29"
+}

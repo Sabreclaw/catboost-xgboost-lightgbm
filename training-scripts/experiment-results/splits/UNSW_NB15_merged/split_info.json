@@ -1,0 +1,12 @@
+{
+  "dataset_name": "UNSW_NB15_merged",
+  "train_samples": 206138,
+  "test_samples": 51535,
+  "features": 35,
+  "positive_samples_train": 131738,
+  "positive_samples_test": 32935,
+  "positive_ratio_train": 0.6390767350027652,
+  "positive_ratio_test": 0.6390802367323178,
+  "test_size": 0.20000155235511677,
+  "timestamp": "2025-10-20T19:01:05"
+}

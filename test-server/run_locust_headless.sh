@@ -25,44 +25,19 @@ if ! command -v locust >/dev/null 2>&1; then
   exit 1
 fi
 
-# Preflight: Resolve X_test.csv path (consider config.json override) and check existence
-X_DEFAULT_PATH="$SCRIPT_DIR/test_files/X_test.csv"
-X_PATH="$X_DEFAULT_PATH"
-if [[ -f "$SCRIPT_DIR/config.json" ]]; then
-  # Use a tiny Python snippet to parse JSON (avoids requiring jq)
-  CFG_X_PATH=$(python3 - "$SCRIPT_DIR/config.json" <<'PY'
-import json, os, sys
-cfg_path = sys.argv[1]
-try:
-    with open(cfg_path, 'r') as f:
-        cfg = json.load(f)
-    x = None
-    tf = cfg.get('test_files')
-    if isinstance(tf, dict):
-        x = tf.get('x_test_path')
-    if x:
-        if not os.path.isabs(x):
-            x = os.path.normpath(os.path.join(os.path.dirname(cfg_path), x))
-        print(x)
-except Exception:
-    pass
-PY
-)
-  if [[ -n "${CFG_X_PATH:-}" ]]; then
-    X_PATH="$CFG_X_PATH"
-  fi
-fi
+# Preflight: Resolve Parquet split path (dataset required)
+DATASET_NAME="${DATASET_NAME:-credit_card_transactions}"
+X_PATH="$SCRIPT_DIR/test_files/splits/${DATASET_NAME}/X_test.parquet"
 
 if [[ ! -f "$X_PATH" ]]; then
-  echo "ERROR: Test file not found: $X_PATH" >&2
-  echo "- Aborting load test. Provide X_test.csv under test-server/test_files/ or set test_files.x_test_path in test-server/config.json." >&2
-  echo "- You can extract test data by running: ./setup.sh (if test_files.zip is present)." >&2
+  echo "ERROR: Test parquet not found: $X_PATH" >&2
+  echo "- Aborting load test. Ensure train/test splits exist under test-server/test_files/splits/<dataset>/X_test.parquet." >&2
   exit 1
 fi
 
 # Prepare results prefix
 TS="$(date +%Y%m%d-%H%M%S)"
-PREFIX="$EXP_DIR/${TS}_${LOAD_MODEL:-model}"
+PREFIX="$EXP_DIR/${TS}_${DATASET_NAME}_${LOAD_MODEL:-model}"
 
 STOP_CALLED=false
 cleanup() {
