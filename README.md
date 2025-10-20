@@ -1,6 +1,6 @@
 # Benchmark Gradient Boosting Models
 
-A compact project to serve and test gradient boosting models (CatBoost, LightGBM, XGBoost) with a FastAPI inference server and Locust-based load testing.
+Train, serve and test gradient boosting models (CatBoost, LightGBM, XGBoost) with a FastAPI inference server and Locust-based load testing for different datasets.
 
 ## Index
 - [Prerequisites](#prerequisites)
