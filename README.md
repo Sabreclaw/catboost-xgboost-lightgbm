@@ -28,8 +28,8 @@ The fastest way to get going is to train, serve, and test — in that order. You
   bash start.sh train
   ```
   This creates ./.venv if needed, installs requirements if missing, trains all four datasets, and saves:
-  - models under experiment-results/models as <dataset>_<Algo>.pkl
-  - splits under experiment-results/splits/<dataset>/
+  - models under experiment-results/models as &lt;dataset>_&lt;Algo>.pkl
+  - splits under experiment-results/splits/&lt;dataset>/
   - consolidated metrics at experiment-results/metrics/all_metrics.csv
 
   Or run training directly (from repo root) for individual datasets:
@@ -82,13 +82,13 @@ The fastest way to get going is to train, serve, and test — in that order. You
   ```bash
   bash start.sh test http://localhost:8000 200 20 2m DEBUG
   ```
-  Ensure the test split exists at test-server/test_files/splits/<dataset>/X_test.parquet.
+  Ensure the test split exists at test-server/test_files/splits/&lt;dataset>/X_test.parquet.
   - Fast path: run `bash start.sh train` to train the example datasets and generate splits with `--save-splits`.
   - If you already trained, copy the split from `experiment-results/splits/<dataset>/X_test.parquet` to `test-server/test_files/splits/<dataset>/`.
   You can change the dataset used for testing via the prompt when running `start.sh test`.
 
 Notes
-- Model server expects artifacts named <dataset>_<Algo>.pkl under model-server/models when serving. The training step saves them under experiment-results/models; copy whichever you want to serve into model-server/models/.
+- Model server expects artifacts named &lt;dataset>_&lt;Algo>.pkl under model-server/models when serving. The training step saves them under experiment-results/models; copy whichever you want to serve into model-server/models/.
 - Set DATASET_NAME to your dataset folder name and LOAD_MODEL to one of catboost|lgbm|xgboost.
 - For more details see model-server/README.md and test-server/README.md.
 
@@ -238,7 +238,7 @@ Option A — one-liner helper:
 ```bash
 bash start.sh train
 ```
-This will create/activate ./.venv if needed, install requirements if missing, and run four training jobs, saving metrics and train/test splits under experiment-results/splits/<dataset>/.
+This will create/activate ./.venv if needed, install requirements if missing, and run four training jobs, saving metrics and train/test splits under experiment-results/splits/&lt;dataset>/.
 
 Option B — direct commands (from repository root):
 ```bash
