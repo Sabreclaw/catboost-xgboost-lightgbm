@@ -54,11 +54,12 @@ This repository includes a simple Locust setup to stress test the FastAPI infere
   - DATASET_NAME env var overrides dataset_name in config.
 
 ## Run Locust (headless)
-Option A – use the helper script:
+Option A – use the helper script (defaults to testing ALL datasets and models):
 ```bash
 # from repository root
-bash test-server/run_locust_headless.sh http://localhost:8000 200 20 2m DEBUG
+bash start.sh test http://localhost:8000 200 20 2m DEBUG
 ```
+- You will be prompted for dataset and model selections; both default to `all`. The script iterates over all 4 datasets × 3 models and repeats per your chosen run count.
 - Arguments: HOST USERS SPAWN_RATE DURATION [LOGLEVEL]
   - HOST: default http://localhost:8000
   - USERS: total concurrent users (e.g., 200)
@@ -67,6 +68,11 @@ bash test-server/run_locust_headless.sh http://localhost:8000 200 20 2m DEBUG
   - LOGLEVEL: Locust logging level (default INFO). Examples: INFO, DEBUG, WARNING
 - Optional: export PRED_METHOD=predict_proba to have Locust call /invocation?method=predict_proba
 - Alternatively, set the LOGLEVEL environment variable instead of passing it as the 5th argument.
+
+Option B – raw helper script without the start.sh wrapper:
+```bash
+bash test-server/run_locust_headless.sh http://localhost:8000 200 20 2m DEBUG
+```
 
 Option B – raw Locust command:
 ```bash

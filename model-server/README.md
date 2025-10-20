@@ -90,7 +90,19 @@ pip install lightgbm     # for LightGBM pickles
 ```
 
 ## Run the server
-Set which dataset and model to load using `DATASET_NAME` and `LOAD_MODEL`, then start uvicorn.
+You can load a single model (legacy mode) or all models at once (multi-model mode).
+
+- Multi-model mode (recommended): set `LOAD_MODEL=all` and start the server. It will load all pickles found under `experiment-results/models/`.
+  - Each request to `/invocation` must include which dataset and model to use via query parameters: `?dataset=<dataset>&model=<catboost|lgbm|xgboost>`.
+
+macOS/Linux (bash/zsh):
+```bash
+# Load all models
+export LOAD_MODEL=all
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+- Single-model mode: set both `DATASET_NAME` and `LOAD_MODEL`.
 
 macOS/Linux (bash/zsh):
 ```bash
@@ -126,6 +138,13 @@ If the model is missing or cannot be loaded, `status` will be `error` and `error
 
 ## Invoke predictions
 Endpoint: `POST /invocation`
+
+When running in multi-model mode (`LOAD_MODEL=all`), include the dataset and model in the query parameters, for example:
+```bash
+curl -X POST 'http://localhost:8000/invocation?dataset=credit_card_transactions&model=catboost' \
+  -H 'Content-Type: application/json' \
+  -d '{"feature_1": 1.2, "feature_2": 3}'
+```
 
 The server accepts several JSON shapes and will internally convert them to a pandas DataFrame. Below are common examples. Replace feature names/values with those appropriate for your model.
 

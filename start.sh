@@ -26,6 +26,10 @@ Usage:
   $0 test  [HOST] [USERS] [SPAWN_RATE] [DURATION] [LOGLEVEL]
   $0 train
 
+Notes:
+- MODEL_KEY can be one of: all, catboost, lgbm, xgboost (default: all)
+- In 'all' mode the server loads all available models. Use dataset/model query params in /invocation to select per request.
+
 Examples:
   # Serve with prompts (defaults host=0.0.0.0, port=8000, model=catboost)
   bash $0 serve
@@ -79,7 +83,7 @@ activate_venv() {
 serve_mode() {
   local HOST="0.0.0.0"
   local PORT="8000"
-  local MODEL_KEY="catboost"
+  local MODEL_KEY="all"
   # Parse optional flags
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -158,17 +162,19 @@ PY
     fi
   fi
 
-  # Step 4: Choose dataset
-  local DATASET_NAME="${DATASET_NAME:-credit_card_transactions}"
-  read -r -p "Select DATASET_NAME (credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged) [${DATASET_NAME}]: " DATASET_IN || true
-  if [[ -n "${DATASET_IN:-}" ]]; then
-    DATASET_NAME="$DATASET_IN"
-  fi
-
-  # Step 5: Choose model key
-  read -r -p "Select LOAD_MODEL (catboost/lgbm/xgboost) [${MODEL_KEY}]: " MODEL_IN || true
+  # Step 4: Choose model key first (default: all)
+  read -r -p "Select LOAD_MODEL (all/catboost/lgbm/xgboost) [${MODEL_KEY}]: " MODEL_IN || true
   if [[ -n "${MODEL_IN:-}" ]]; then
     MODEL_KEY="$MODEL_IN"
+  fi
+
+  # Step 5: Choose dataset only if not 'all'
+  local DATASET_NAME="${DATASET_NAME:-credit_card_transactions}"
+  if [[ "${MODEL_KEY,,}" != "all" ]]; then
+    read -r -p "Select DATASET_NAME (credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged) [${DATASET_NAME}]: " DATASET_IN || true
+    if [[ -n "${DATASET_IN:-}" ]]; then
+      DATASET_NAME="$DATASET_IN"
+    fi
   fi
 
   # Step 6: Choose host/port
@@ -188,24 +194,35 @@ PY
     DEBUG_FLAGS="--log-level debug"
   fi
 
-  # Preflight: Verify model file exists for selected DATASET_NAME + MODEL_KEY
-  local SUFFIX=""
-  case "${MODEL_KEY,,}" in
-    catboost) SUFFIX="CatBoost" ;;
-    lgbm) SUFFIX="LightGBM" ;;
-    xgboost) SUFFIX="XGBoost" ;;
-    *) echo "ERROR: Unsupported model key: $MODEL_KEY (use catboost|lgbm|xgboost)" >&2; exit 1 ;;
-  esac
-  local MODEL_PATH="$REPO_ROOT/experiment-results/models/${DATASET_NAME}_${SUFFIX}.pkl"
-  if [[ ! -f "$MODEL_PATH" ]]; then
-    echo "ERROR: Model file not found: $MODEL_PATH" >&2
-    echo "Ensure the model exists in$REPO_ROOT/experiment-results/models/ named '<dataset>_<Algo>.pkl'." >&2
-    exit 1
+  # Preflight: Verify model artifacts exist
+  if [[ "${MODEL_KEY,,}" == "all" ]]; then
+    local ANY_MODEL
+    ANY_MODEL=$(ls "$REPO_ROOT/experiment-results/models"/*.pkl 2>/dev/null | head -n 1 || true)
+    if [[ -z "$ANY_MODEL" ]]; then
+      echo "ERROR: No model pickles found under $REPO_ROOT/experiment-results/models/. Run training first." >&2
+      exit 1
+    fi
+    echo "Starting server in ALL-models mode. host=$HOST port=$PORT"
+    export LOAD_MODEL="all"
+    unset DATASET_NAME || true
+  else
+    local SUFFIX=""
+    case "${MODEL_KEY,,}" in
+      catboost) SUFFIX="CatBoost" ;;
+      lgbm) SUFFIX="LightGBM" ;;
+      xgboost) SUFFIX="XGBoost" ;;
+      *) echo "ERROR: Unsupported model key: $MODEL_KEY (use all|catboost|lgbm|xgboost)" >&2; exit 1 ;;
+    esac
+    local MODEL_PATH="$REPO_ROOT/experiment-results/models/${DATASET_NAME}_${SUFFIX}.pkl"
+    if [[ ! -f "$MODEL_PATH" ]]; then
+      echo "ERROR: Model file not found: $MODEL_PATH" >&2
+      echo "Ensure the model exists in $REPO_ROOT/experiment-results/models/ named '<dataset>_<Algo>.pkl'." >&2
+      exit 1
+    fi
+    echo "Starting server with: DATASET_NAME=$DATASET_NAME LOAD_MODEL=$MODEL_KEY host=$HOST port=$PORT"
+    export DATASET_NAME="$DATASET_NAME"
+    export LOAD_MODEL="$MODEL_KEY"
   fi
-
-  echo "Starting server with: DATASET_NAME=$DATASET_NAME LOAD_MODEL=$MODEL_KEY host=$HOST port=$PORT"
-  export DATASET_NAME="$DATASET_NAME"
-  export LOAD_MODEL="$MODEL_KEY"
   cd "$MODEL_DIR"
   exec uvicorn app.main:app --host "$HOST" --port "$PORT" $DEBUG_FLAGS
 }
@@ -267,19 +284,18 @@ test_mode() {
     exit 1
   fi
 
-  # Choose dataset for testing (defaults to the same as serve-mode default)
-  local DATASET_NAME_TEST="${DATASET_NAME:-credit_card_transactions}"
-  read -r -p "Select DATASET_NAME for testing (credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged) [${DATASET_NAME_TEST}]: " DATASET_TEST_IN || true
+  # Choose datasets for testing (default: all)
+  local DATASET_NAME_TEST="all"
+  read -r -p "Select DATASET_NAME for testing (all/credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged) [${DATASET_NAME_TEST}]: " DATASET_TEST_IN || true
   if [[ -n "${DATASET_TEST_IN:-}" ]]; then
     DATASET_NAME_TEST="$DATASET_TEST_IN"
   fi
 
-  # Preflight: Ensure split test parquet exists
-  local X_PATH="$TEST_DIR/../experiment-results/splits/${DATASET_NAME_TEST}/X_test.parquet"
-  if [[ ! -f "$X_PATH" ]]; then
-    echo "ERROR: Test split not found: $X_PATH" >&2
-    echo "Ensure train/test splits exist under ($REPO_ROOT)/experiment-results/splits/<dataset>/X_test.parquet" >&2
-    exit 1
+  # Choose models for testing (default: all)
+  local MODEL_KEY_TEST="all"
+  read -r -p "Select MODEL for testing (all/catboost/lgbm/xgboost) [${MODEL_KEY_TEST}]: " MODEL_TEST_IN || true
+  if [[ -n "${MODEL_TEST_IN:-}" ]]; then
+    MODEL_KEY_TEST="$MODEL_TEST_IN"
   fi
 
   # Ask how many times to run the experiment
@@ -303,14 +319,38 @@ test_mode() {
   echo "Batch GUID: $BATCH_GUID"
 
   if confirm "Run Locust now?" default_y; then
-    local i
-    for (( i=1; i<=RUNS; i++ )); do
-      echo "\n===> Starting run $i of $RUNS (dataset=$DATASET_NAME_TEST, host=$HOST, users=$USERS, spawn_rate=$SPAWN_RATE, duration=$DURATION)"
-      (cd "$TEST_DIR" && DATASET_NAME="$DATASET_NAME_TEST" BATCH_GUID="$BATCH_GUID" bash ./run_locust_headless.sh "$HOST" "$USERS" "$SPAWN_RATE" "$DURATION" "$LOGLEVEL")
-      if [[ "$i" -lt "$RUNS" ]]; then
-        echo "Run $i finished. Waiting 5 seconds before next run..."
-        sleep 5
+    # Build dataset list
+    local DATASETS=()
+    if [[ "${DATASET_NAME_TEST,,}" == "all" ]]; then
+      DATASETS=("credit_card_transactions" "diabetic" "healthcare-dataset-stroke" "UNSW_NB15_merged")
+    else
+      DATASETS=("$DATASET_NAME_TEST")
+    fi
+    # Build model list
+    local MODELS=()
+    case "${MODEL_KEY_TEST,,}" in
+      all) MODELS=("catboost" "lgbm" "xgboost") ;;
+      catboost|lgbm|xgboost) MODELS=("${MODEL_KEY_TEST,,}") ;;
+      *) echo "Unknown model selection: $MODEL_KEY_TEST" >&2; return 1 ;;
+    esac
+
+    local ds md i
+    for ds in "${DATASETS[@]}"; do
+      local X_PATH_CHECK="$TEST_DIR/../experiment-results/splits/${ds}/X_test.parquet"
+      if [[ ! -f "$X_PATH_CHECK" ]]; then
+        echo "WARNING: Skipping dataset '$ds' because test split not found at $X_PATH_CHECK" >&2
+        continue
       fi
+      for md in "${MODELS[@]}"; do
+        for (( i=1; i<=RUNS; i++ )); do
+          echo "\n===> Starting run $i of $RUNS (dataset=$ds, model=$md, host=$HOST, users=$USERS, spawn_rate=$SPAWN_RATE, duration=$DURATION)"
+          (cd "$TEST_DIR" && DATASET_NAME="$ds" LOAD_MODEL="$md" BATCH_GUID="$BATCH_GUID" bash ./run_locust_headless.sh "$HOST" "$USERS" "$SPAWN_RATE" "$DURATION" "$LOGLEVEL")
+          if [[ "$i" -lt "$RUNS" ]]; then
+            echo "Run $i finished. Waiting 5 seconds before next run..."
+            sleep 5
+          fi
+        done
+      done
     done
   else
     echo "Skipped running Locust."

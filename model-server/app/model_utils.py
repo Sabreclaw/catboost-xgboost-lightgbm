@@ -1,7 +1,7 @@
 import os
 import pickle
 from pathlib import Path
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Dict, List
 
 
 def resolve_model_path() -> Tuple[Optional[str], Optional[str], Optional[str]]:
@@ -44,6 +44,34 @@ def resolve_model_path() -> Tuple[Optional[str], Optional[str], Optional[str]]:
             f"Model file '{candidate}' not found. Ensure the file exists in model-server/models/ with naming '<dataset>_<Algo>.pkl'."
         )
     return f"{dataset}/{model_key}", str(candidate.resolve()), None
+
+
+def list_available_models() -> List[Tuple[str, str, str]]:
+    """
+    Scan experiment-results/models for available pickles and return a list of
+    (dataset_name, model_key, abs_path) tuples.
+    Model keys are normalized to: catboost, lgbm, xgboost.
+    """
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    models_dir = repo_root / "experiment-results" / "models"
+    results: List[Tuple[str, str, str]] = []
+    if not models_dir.exists():
+        return results
+
+    suffix_to_key = {
+        "CatBoost": "catboost",
+        "LightGBM": "lgbm",
+        "XGBoost": "xgboost",
+    }
+    for p in models_dir.glob("*.pkl"):
+        name = p.stem  # <dataset>_<Algo>
+        for algo_suffix, key in suffix_to_key.items():
+            suf = f"_{algo_suffix}"
+            if name.endswith(suf):
+                dataset = name[: -len(suf)]
+                results.append((dataset, key, str(p.resolve())))
+                break
+    return results
 
 
 def load_pickle(path: str) -> Any:

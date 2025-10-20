@@ -65,27 +65,31 @@ The fastest way to get going is to train, serve, and test — in that order. You
   ```bash
   bash start.sh serve
   ```
-  The script will prompt you to choose:
-  - DATASET_NAME (credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged)
-  - LOAD_MODEL (catboost/lgbm/xgboost)
+  By default, this starts the server in ALL-models mode (LOAD_MODEL=all), loading all available pickles under experiment-results/models/. You can still choose a single model by selecting a specific algorithm and dataset.
+  - LOAD_MODEL (all/catboost/lgbm/xgboost)
+  - DATASET_NAME (only prompted when not using 'all')
   - host/port and optional debug logging
 
   Serve manually (from model-server directory):
   ```bash
   cd model-server
-  export DATASET_NAME=credit_card_transactions   # or diabetic, healthcare-dataset-stroke, UNSW_NB15_merged
-  export LOAD_MODEL=catboost                     # or lgbm, xgboost
+  # Load all models
+  export LOAD_MODEL=all
   uvicorn app.main:app --host 0.0.0.0 --port 8000
+  # Or single-model mode
+  # export DATASET_NAME=credit_card_transactions
+  # export LOAD_MODEL=catboost
+  # uvicorn app.main:app --host 0.0.0.0 --port 8000
   ```
 
 - Testing (headless Locust):
   ```bash
   bash start.sh test http://localhost:8000 200 20 2m DEBUG
   ```
-  Ensure the test split exists at test-server/test_files/splits/&lt;dataset>/X_test.parquet.
+  By default, the tester will iterate over ALL datasets and models (4×3 combinations). You can narrow it down at the prompts.
+  Ensure the test split exists at experiment-results/splits/<dataset>/X_test.parquet for each dataset you intend to test.
   - Fast path: run `bash start.sh train` to train the example datasets and generate splits with `--save-splits`.
-  - If you already trained, copy the split from `experiment-results/splits/<dataset>/X_test.parquet` to `test-server/test_files/splits/<dataset>/`.
-  You can change the dataset used for testing via the prompt when running `start.sh test`.
+  - If needed, you can also copy the split into `test-server/test_files/splits/<dataset>/`.
 
 Notes
 - Model server expects artifacts named &lt;dataset>_&lt;Algo>.pkl under model-server/models when serving. The training step saves them under experiment-results/models; copy whichever you want to serve into model-server/models/.

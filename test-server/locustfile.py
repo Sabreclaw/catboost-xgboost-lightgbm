@@ -75,6 +75,9 @@ X_ROWS: List[Dict] = load_rows_with_fallback(X_TEST_PRIMARY, X_TEST_FALLBACK)
 _config_pred_method = CONFIG.get("pred_method") if isinstance(CONFIG, dict) else None
 PRED_METHOD: Optional[str] = os.getenv("PRED_METHOD") or _config_pred_method  # e.g., "predict_proba"
 
+# Optional model selection (for multi-model server)
+MODEL_KEY = (os.getenv("LOAD_MODEL") or "").strip()
+
 
 @events.init.add_listener
 def on_locust_init(environment, **kwargs):
@@ -100,7 +103,14 @@ class InferenceUser(HttpUser):
             return
         row = random.choice(X_ROWS)
         # Send as a single JSON object (one row)
-        path = "/invocation"
+        # Build query params
+        params = []
         if PRED_METHOD:
-            path += f"?method={PRED_METHOD}"
+            params.append(f"method={PRED_METHOD}")
+        if DATASET_NAME:
+            params.append(f"dataset={DATASET_NAME}")
+        if MODEL_KEY:
+            params.append(f"model={MODEL_KEY}")
+        q = ("?" + "&".join(params)) if params else ""
+        path = "/invocation" + q
         self.client.post(path, json=row, name="/invocation", timeout=30)
