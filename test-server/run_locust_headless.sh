@@ -17,8 +17,9 @@ mkdir -p "$EXP_DIR"
 HOST="${1:-${HOST:-http://localhost:8000}}"
 USERS="${2:-${USERS:-100}}"
 SPAWN_RATE="${3:-${SPAWN_RATE:-10}}"
-DURATION="${4:-${DURATION:-1m}}"
+DURATION="${4:-${DURATION:-24h}}"
 LOGLEVEL="${5:-${LOGLEVEL:-INFO}}"
+MAX_REQUESTS="${6:-${MAX_REQUESTS:-20000}}"
 
 if ! command -v locust >/dev/null 2>&1; then
   echo "ERROR: locust is not installed. Run: pip install -r ../requirements.txt" >&2
@@ -66,10 +67,21 @@ locust \
   -u "$USERS" \
   -r "$SPAWN_RATE" \
   -t "$DURATION" \
+  -i "$MAX_REQUESTS" \
   --stop-timeout 60 \
   --csv "$PREFIX" \
   --csv-full-history \
   --loglevel "$LOGLEVEL"
+# locust \
+#   -f "$LOCUST_FILE" \
+#   --headless \
+#   --host "$HOST" \
+#   -u "$USERS" \
+#   -r "$SPAWN_RATE" \
+#   -i "$MAX_REQUESTS" \
+#   --csv "$PREFIX" \
+#   --csv-full-history \
+#   --loglevel "$LOGLEVEL"
 
 # Stop energy profiling and capture JSON
 STOP_JSON="${PREFIX}_energy_stop.json"

@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import List, Dict, Optional
 
 import pandas as pd
-from locust import HttpUser, task, between, events
+from locust import FastHttpUser, task, between, events
+import time
 
 
 def load_rows_from_parquet(pq_path: Path) -> List[Dict]:
@@ -17,7 +18,9 @@ def load_rows_from_parquet(pq_path: Path) -> List[Dict]:
             print("[locustfile] WARNING: X_test.parquet has no feature columns.")
             return []
         rows = df.to_dict(orient="records")
-        print(f"[locustfile] Loaded {len(rows)} rows and {df.shape[1]} features from {pq_path}")
+        print(
+            f"[locustfile] Loaded {len(rows)} rows and {df.shape[1]} features from {pq_path}"
+        )
         return rows
     except Exception as e:
         print(f"[locustfile] ERROR: Failed to read {pq_path}: {e}")
@@ -30,6 +33,7 @@ REPO_ROOT = BASE_DIR.parent
 
 # Load optional config.json
 import json
+
 CONFIG_PATH = BASE_DIR / "config.json"
 CONFIG = {}
 if CONFIG_PATH.exists():
@@ -41,11 +45,17 @@ if CONFIG_PATH.exists():
         print(f"[locustfile] WARNING: Failed to read config.json: {e}")
 
 # Dataset selection: ENV wins over config; default to credit_card_transactions
-DATASET_NAME = os.getenv("DATASET_NAME") or CONFIG.get("dataset_name") or "credit_card_transactions"
+DATASET_NAME = (
+    os.getenv("DATASET_NAME")
+    or CONFIG.get("dataset_name")
+    or "credit_card_transactions"
+)
 
 # Primary path under test-server/test_files; fallback to experiment-results if not found or empty
 X_TEST_PRIMARY = BASE_DIR / "test_files" / "splits" / DATASET_NAME / "X_test.parquet"
-X_TEST_FALLBACK = REPO_ROOT / "experiment-results" / "splits" / DATASET_NAME / "X_test.parquet"
+X_TEST_FALLBACK = (
+    REPO_ROOT / "experiment-results" / "splits" / DATASET_NAME / "X_test.parquet"
+)
 
 # Track which path was used
 SELECTED_X_PATH: Optional[Path] = None
@@ -73,7 +83,9 @@ X_ROWS: List[Dict] = load_rows_with_fallback(X_TEST_PRIMARY, X_TEST_FALLBACK)
 
 # Prediction method: env var overrides config
 _config_pred_method = CONFIG.get("pred_method") if isinstance(CONFIG, dict) else None
-PRED_METHOD: Optional[str] = os.getenv("PRED_METHOD") or _config_pred_method  # e.g., "predict_proba"
+PRED_METHOD: Optional[str] = (
+    os.getenv("PRED_METHOD") or _config_pred_method
+)  # e.g., "predict_proba"
 
 # Optional model selection (for multi-model server)
 MODEL_KEY = (os.getenv("LOAD_MODEL") or "").strip()
@@ -88,9 +100,26 @@ def on_locust_init(environment, **kwargs):
         )
 
 
-class InferenceUser(HttpUser):
+@events.test_stop.add_listener
+def on_locust_stop(environment, **kwargs):
+    """Export results and initiate shutdown when test stops"""
+    print("[locustfile] Test stopped, exiting...")
+    time.sleep(1)
+
+
+@events.quitting.add_listener
+def _(environment, **_kwargs):
+    """Force Locust to terminate all runners and greenlets."""
+    if environment.runner:
+        environment.runner.quit()
+        print("[locustfile] Runner quit triggered.")
+
+
+class InferenceUser(FastHttpUser):
     # Host can come from CLI (--host), env HOST, or config.json (lowest precedence here)
-    host = os.getenv("HOST") or (CONFIG.get("host") if isinstance(CONFIG, dict) else None)
+    host = os.getenv("HOST") or (
+        CONFIG.get("host") if isinstance(CONFIG, dict) else None
+    )
     # Wait time from config, default to previous aggressive values
     _wt = CONFIG.get("wait_time", {}) if isinstance(CONFIG, dict) else {}
     _wt_min = _wt.get("min_seconds", 0.01) if isinstance(_wt, dict) else 0.01
@@ -113,4 +142,4 @@ class InferenceUser(HttpUser):
             params.append(f"model={MODEL_KEY}")
         q = ("?" + "&".join(params)) if params else ""
         path = "/invocation" + q
-        self.client.post(path, json=row, name="/invocation", timeout=30)
+        self.client.post(path, json=row, name="/invocation", timeout=2)

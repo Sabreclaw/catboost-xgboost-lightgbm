@@ -23,7 +23,7 @@ usage() {
   cat <<EOF
 Usage:
   $0 serve [--host HOST] [--port PORT] [--model MODEL_KEY]
-  $0 test  [HOST] [USERS] [SPAWN_RATE] [DURATION] [LOGLEVEL]
+  $0 test  [HOST] [USERS] [SPAWN_RATE] [DURATION] [LOGLEVEL] [MAX_REQUESTS]
   $0 train
 
 Notes:
@@ -261,8 +261,9 @@ test_mode() {
   local HOST="${1:-${HOST:-http://localhost:8000}}"
   local USERS="${2:-${USERS:-100}}"
   local SPAWN_RATE="${3:-${SPAWN_RATE:-10}}"
-  local DURATION="${4:-${DURATION:-1m}}"
+  local DURATION="${4:-${DURATION:-24h}}"
   local LOGLEVEL="${5:-${LOGLEVEL:-INFO}}"
+  local MAX_REQUESTS="${6:-${MAX_REQUESTS:-10000}}"
 
   echo "Current settings:"
   echo "  HOST=$HOST"
@@ -270,6 +271,7 @@ test_mode() {
   echo "  SPAWN_RATE=$SPAWN_RATE"
   echo "  DURATION=$DURATION"
   echo "  LOGLEVEL=$LOGLEVEL"
+  echo "  MAX_REQUESTS=$MAX_REQUESTS"
 
   if confirm "Edit settings before running?" default_n; then
     read -r -p "HOST [$HOST]: " IN || true; [[ -n "${IN:-}" ]] && HOST="$IN"
@@ -277,6 +279,7 @@ test_mode() {
     read -r -p "SPAWN_RATE [$SPAWN_RATE]: " IN || true; [[ -n "${IN:-}" ]] && SPAWN_RATE="$IN"
     read -r -p "DURATION [$DURATION]: " IN || true; [[ -n "${IN:-}" ]] && DURATION="$IN"
     read -r -p "LOGLEVEL [$LOGLEVEL]: " IN || true; [[ -n "${IN:-}" ]] && LOGLEVEL="$IN"
+    read -r -p "MAX_REQUESTS [$MAX_REQUESTS]: " IN || true; [[ -n "${IN:-}" ]] && MAX_REQUESTS="$IN"
   fi
 
   if ! [[ -f "$TEST_DIR/run_locust_headless.sh" ]]; then
@@ -343,8 +346,8 @@ test_mode() {
       fi
       for md in "${MODELS[@]}"; do
         for (( i=1; i<=RUNS; i++ )); do
-          echo "\n===> Starting run $i of $RUNS (dataset=$ds, model=$md, host=$HOST, users=$USERS, spawn_rate=$SPAWN_RATE, duration=$DURATION)"
-          (cd "$TEST_DIR" && DATASET_NAME="$ds" LOAD_MODEL="$md" BATCH_GUID="$BATCH_GUID" bash ./run_locust_headless.sh "$HOST" "$USERS" "$SPAWN_RATE" "$DURATION" "$LOGLEVEL")
+          echo "\n===> Starting run $i of $RUNS (dataset=$ds, model=$md, host=$HOST, users=$USERS, spawn_rate=$SPAWN_RATE, duration=$DURATION, max_requests=$MAX_REQUESTS)"
+          (cd "$TEST_DIR" && DATASET_NAME="$ds" LOAD_MODEL="$md" BATCH_GUID="$BATCH_GUID" bash ./run_locust_headless.sh "$HOST" "$USERS" "$SPAWN_RATE" "$DURATION" "$LOGLEVEL" "$MAX_REQUESTS")
           if [[ "$i" -lt "$RUNS" ]]; then
             echo "Run $i finished. Waiting 5 seconds before next run..."
             sleep 5

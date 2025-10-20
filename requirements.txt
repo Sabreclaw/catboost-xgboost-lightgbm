@@ -20,3 +20,4 @@ pyarrow==21.0.0
 
 # Load testing
 locust>=2.17.0
+locust-plugins>=2.1.0

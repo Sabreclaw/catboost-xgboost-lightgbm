@@ -304,7 +304,7 @@ bash start.sh serve --host 127.0.0.1 --port 8000 --model lgbm
 
 Run Locust load tests (headless):
 ```bash
-bash start.sh test [HOST] [USERS] [SPAWN_RATE] [DURATION] [LOGLEVEL]
+bash start.sh test [HOST] [USERS] [SPAWN_RATE] [DURATION] [LOGLEVEL] [MAX_REQUESTS]
 ```
 Example:
 ```bash
