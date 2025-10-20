@@ -282,8 +282,36 @@ test_mode() {
     exit 1
   fi
 
+  # Ask how many times to run the experiment
+  local RUNS="1"
+  read -r -p "How many times do you want to run the experiment? [${RUNS}]: " RUNS_IN || true
+  if [[ -n "${RUNS_IN:-}" ]]; then RUNS="$RUNS_IN"; fi
+  if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [[ "$RUNS" -lt 1 ]]; then
+    echo "Invalid number of runs '$RUNS'. Defaulting to 1."
+    RUNS=1
+  fi
+
+  # Generate a batch GUID shared by all runs
+  local BATCH_GUID
+  if command -v uuidgen >/dev/null 2>&1; then
+    BATCH_GUID="$(uuidgen)"
+  elif command -v python3 >/dev/null 2>&1; then
+    BATCH_GUID="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+  else
+    BATCH_GUID="batch-$(date +%s)-$RANDOM"
+  fi
+  echo "Batch GUID: $BATCH_GUID"
+
   if confirm "Run Locust now?" default_y; then
-    (cd "$TEST_DIR" && DATASET_NAME="$DATASET_NAME_TEST" bash ./run_locust_headless.sh "$HOST" "$USERS" "$SPAWN_RATE" "$DURATION" "$LOGLEVEL")
+    local i
+    for (( i=1; i<=RUNS; i++ )); do
+      echo "\n===> Starting run $i of $RUNS (dataset=$DATASET_NAME_TEST, host=$HOST, users=$USERS, spawn_rate=$SPAWN_RATE, duration=$DURATION)"
+      (cd "$TEST_DIR" && DATASET_NAME="$DATASET_NAME_TEST" BATCH_GUID="$BATCH_GUID" bash ./run_locust_headless.sh "$HOST" "$USERS" "$SPAWN_RATE" "$DURATION" "$LOGLEVEL")
+      if [[ "$i" -lt "$RUNS" ]]; then
+        echo "Run $i finished. Waiting 5 seconds before next run..."
+        sleep 5
+      fi
+    done
   else
     echo "Skipped running Locust."
   fi

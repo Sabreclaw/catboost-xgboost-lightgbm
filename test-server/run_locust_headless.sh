@@ -82,16 +82,27 @@ if command -v curl >/dev/null 2>&1; then
   fi
 fi
 
-# Summarize and print a combined table
-python3 - <<'PY' "$PREFIX" "$DURATION"
+# Summarize and print a combined table and append to run_table.csv
+python3 - <<'PY' "$PREFIX" "$DURATION" "$DATASET_NAME" "${LOAD_MODEL:-}" "$TS" "${BATCH_GUID:-}"
 import csv, json, os, sys
 from pathlib import Path
+from datetime import datetime
 
 prefix = sys.argv[1]
 duration_conf = sys.argv[2]
+dataset_name = sys.argv[3] if len(sys.argv) > 3 else os.getenv('DATASET_NAME') or ''
+model_key = sys.argv[4] if len(sys.argv) > 4 else os.getenv('LOAD_MODEL') or ''
+ts_str = sys.argv[5] if len(sys.argv) > 5 else datetime.now().strftime('%Y%m%d-%H%M%S')
+batch_guid = sys.argv[6] if len(sys.argv) > 6 else os.getenv('BATCH_GUID') or ''
+
 locust_csv = Path(prefix + "_stats.csv")
 locust_csv_total = Path(prefix + "_stats_total.csv")
 stop_json = Path(prefix + "_energy_stop.json")
+
+# run_table.csv lives in the experiment-results directory
+exp_dir = Path(prefix).parent
+run_table = exp_dir / "run_table.csv"
+
 
 def to_float(val):
     if val is None:
@@ -104,6 +115,7 @@ def to_float(val):
         return float(s)
     except Exception:
         return None
+
 
 def read_stats_row():
     if not locust_csv.exists():
@@ -126,6 +138,7 @@ def read_stats_row():
                 break
     return agg, rows
 
+
 def read_stats_total():
     if not locust_csv_total.exists():
         return None
@@ -135,6 +148,7 @@ def read_stats_total():
         if rows:
             return rows[-1]
     return None
+
 
 def extract_totals():
     agg, rows = read_stats_row()
@@ -187,6 +201,7 @@ def extract_totals():
             avg_resp_ms = weighted_sum / total
     return total_requests, avg_resp_ms
 
+
 # Defaults
 total_requests, avg_resp_ms = extract_totals()
 
@@ -238,4 +253,32 @@ print(sep)
 print(f"Saved Locust CSV: {locust_csv}")
 if stop_json.exists():
     print(f"Saved Energy JSON: {stop_json}")
+
+# Append a row to experiment-results/run_table.csv
+headers = [
+    'timestamp', 'batch_guid', 'database', 'model',
+    'total_requests', 'mean_latency_ms', 'test_duration_config',
+    'energy_j', 'mean_power_w', 'mean_cpu_percent', 'mean_memory_gb'
+]
+row = {
+    'timestamp': ts_str,
+    'batch_guid': batch_guid,
+    'database': dataset_name,
+    'model': model_key,
+    'total_requests': int(total_requests) if isinstance(total_requests, (int, float)) and total_requests is not None else '',
+    'mean_latency_ms': float(f"{avg_resp_ms:.6f}") if isinstance(avg_resp_ms, (int, float)) and avg_resp_ms is not None else '',
+    'test_duration_config': duration_conf,
+    'energy_j': float(f"{energy_j:.6f}") if isinstance(energy_j, (int, float)) and energy_j is not None else '',
+    'mean_power_w': float(f"{mean_power:.6f}") if isinstance(mean_power, (int, float)) and mean_power is not None else '',
+    'mean_cpu_percent': float(f"{mean_cpu:.6f}") if isinstance(mean_cpu, (int, float)) and mean_cpu is not None else '',
+    'mean_memory_gb': float(f"{mean_mem_gb:.6f}") if isinstance(mean_mem_gb, (int, float)) and mean_mem_gb is not None else '',
+}
+
+run_table_exists = run_table.exists()
+with open(run_table, 'a', newline='') as f:
+    writer = csv.DictWriter(f, fieldnames=headers)
+    if not run_table_exists:
+        writer.writeheader()
+    writer.writerow(row)
+print(f"Appended run summary to: {run_table}")
 PY
