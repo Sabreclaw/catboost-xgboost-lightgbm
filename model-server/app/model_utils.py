@@ -18,7 +18,7 @@ def resolve_model_path() -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """
     # repo root is the parent of the 'app' directory containing this file
     repo_root = Path(__file__).resolve().parent.parent
-    models_dir = repo_root / "models"
+    models_dir = repo_root / "experiment-results" / "models"
 
     # Required: dataset name
     dataset = (os.getenv("DATASET_NAME") or os.getenv("DATASET") or "").strip()
