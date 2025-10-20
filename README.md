@@ -3,15 +3,91 @@
 A compact project to serve and test gradient boosting models (CatBoost, LightGBM, XGBoost) with a FastAPI inference server and Locust-based load testing.
 
 ## Index
-- [Overview](#overview)
 - [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Overview](#overview)
 - [Repository structure](#repository-structure)
 - [Flow diagram](#flow-diagram)
 - [Clone (with submodules)](#clone-with-submodules)
 - [Large files (Git LFS)](#large-files-git-lfs)
 - [Training](#training)
-- [Quick start (serve and test)](#quick-start-serve-and-test)
+- [Serve and Test](#serve-and-test)
 - [References](#references)
+
+## Prerequisites
+Before running the server or tests, ensure the following are installed on your system:
+- Energibridge (required for energy measurement): https://github.com/tdurieux/EnergiBridge
+- Python 3
+- Git LFS
+
+## Quick start
+The fastest way to get going is to train, serve, and test — in that order. You can use the helper script or run commands manually.
+
+- Training (one-liner):
+  ```bash
+  bash start.sh train
+  ```
+  This creates ./.venv if needed, installs requirements if missing, trains all four datasets, and saves:
+  - models under experiment-results/models as <dataset>_<Algo>.pkl
+  - splits under experiment-results/splits/<dataset>/
+  - consolidated metrics at experiment-results/metrics/all_metrics.csv
+
+  Or run training directly (from repo root) for individual datasets:
+  ```bash
+  python training-scripts/training.py \
+      --data diabetic_data.parquet \
+      --target readmitted \
+      --positive-label ">30" \
+      --test-size 0.2 \
+      --save-splits
+
+  python training-scripts/training.py \
+      --data credit_card_transactions.parquet \
+      --target is_fraud \
+      --test-size 0.2 \
+      --drop-cols "Unnamed: 0" first last street city state zip lat long dob trans_num merch_zipcode merchant job \
+      --save-splits
+
+  python training-scripts/training.py \
+      --data UNSW_NB15_merged.parquet \
+      --target label \
+      --test-size 0.2 \
+      --save-splits
+
+  python training-scripts/training.py \
+      --data healthcare-dataset-stroke-data.parquet \
+      --target stroke \
+      --test-size 0.2 \
+      --save-splits
+  ```
+
+- Serving (interactive helper):
+  ```bash
+  bash start.sh serve
+  ```
+  The script will prompt you to choose:
+  - DATASET_NAME (credit_card_transactions/diabetic/healthcare-dataset-stroke/UNSW_NB15_merged)
+  - LOAD_MODEL (catboost/lgbm/xgboost)
+  - host/port and optional debug logging
+
+  Serve manually (from model-server directory):
+  ```bash
+  cd model-server
+  export DATASET_NAME=credit_card_transactions   # or diabetic, healthcare-dataset-stroke, UNSW_NB15_merged
+  export LOAD_MODEL=catboost                     # or lgbm, xgboost
+  uvicorn app.main:app --host 0.0.0.0 --port 8000
+  ```
+
+- Testing (headless Locust):
+  ```bash
+  bash start.sh test http://localhost:8000 200 20 2m DEBUG
+  ```
+  Ensure the test split exists at test-server/test_files/splits/<dataset>/X_test.parquet (produced when you trained with --save-splits). You can change the dataset used for testing via the prompt when running start.sh test.
+
+Notes
+- Model server expects artifacts named <dataset>_<Algo>.pkl under model-server/models when serving. The training step saves them under experiment-results/models; copy whichever you want to serve into model-server/models/.
+- Set DATASET_NAME to your dataset folder name and LOAD_MODEL to one of catboost|lgbm|xgboost.
+- For more details see model-server/README.md and test-server/README.md.
 
 ## Overview
 This repository contains:
@@ -22,12 +98,6 @@ This repository contains:
 For component-specific details, see:
 - Model server: [model-server/README.md](model-server/README.md)
 - Load testing: [test-server/README.md](test-server/README.md)
-
-## Prerequisites
-Before running the server or tests, ensure the following are installed on your system:
-- Energibridge (required for energy measurement): https://github.com/tdurieux/EnergiBridge
-- Python 3
-- Git LFS
 
 ## Repository structure
 ```
@@ -196,7 +266,7 @@ python training-scripts/training.py \
     --save-splits
 ```
 
-## Quick start (serve and test)
+## Serve and test
 A helper script is available at the repository root to streamline serving the model or running load tests. It uses interactive prompts allowing confirmation or skipping of each step.
 
 Serve the FastAPI model server (creates ./.venv at the repository root if selected, installs dependencies if selected, and starts uvicorn):
@@ -243,5 +313,8 @@ Notes
 
 
 ## References
-- Notebook credit: Fraud Detection with CatBoost, XGBoost, LightGBM by Emre Bayir — https://www.kaggle.com/code/emrebayirr/fraud-detection-with-catboost-xgboost-lightgbm
-- Dataset credit: Credit Card Transactions Dataset by Priyam Choksi — https://www.kaggle.com/datasets/priyamchoksi/credit-card-transactions-dataset
+Dataset credit: 
+- Credit Card Transactions Dataset by Priyam Choksi - https://www.kaggle.com/datasets/priyamchoksi/credit-card-transactions-dataset
+- Diabetes 130 US hospitals for years 1999-2008 by Humberto Brandão - https://www.kaggle.com/datasets/brandao/diabetes
+- UNSW-NB15 Network Intrusion Detection, ISG group @UNSW Canberra - https://www.kaggle.com/datasets/dhoogla/unswnb15
+- Stroke Prediction Dataset by [fedesoriano](https://www.kaggle.com/fedesoriano) - https://www.kaggle.com/datasets/fedesoriano/stroke-prediction-dataset
