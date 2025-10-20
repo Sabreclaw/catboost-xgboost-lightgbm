@@ -355,7 +355,7 @@ PY
 
   echo "Running training for diabetic_data.parquet"
   $PYBIN "$TRAIN_SCRIPT" \
-    --data "$REPO_ROOT/diabetic_data.parquet" \
+    --data "$REPO_ROOT/training-scripts/diabetic_data.parquet" \
     --target readmitted \
     --positive-label ">30" \
     --test-size 0.2 \
@@ -363,7 +363,7 @@ PY
 
   echo "Running training for credit_card_transactions.parquet"
   $PYBIN "$TRAIN_SCRIPT" \
-    --data "$REPO_ROOT/credit_card_transactions.parquet" \
+    --data "$REPO_ROOT/training-scripts/credit_card_transactions.parquet" \
     --target is_fraud \
     --test-size 0.2 \
     --drop-cols "Unnamed: 0" first last street city state zip lat long dob trans_num merch_zipcode merchant job \
@@ -371,14 +371,14 @@ PY
 
   echo "Running training for UNSW_NB15_merged.parquet"
   $PYBIN "$TRAIN_SCRIPT" \
-    --data "$REPO_ROOT/UNSW_NB15_merged.parquet" \
+    --data "$REPO_ROOT/training-scripts/UNSW_NB15_merged.parquet" \
     --target label \
     --test-size 0.2 \
     --save-splits || { echo "Training failed for UNSW_NB15_merged"; exit 1; }
 
   echo "Running training for healthcare-dataset-stroke-data.parquet"
   $PYBIN "$TRAIN_SCRIPT" \
-    --data "$REPO_ROOT/healthcare-dataset-stroke-data.parquet" \
+    --data "$REPO_ROOT/training-scripts/healthcare-dataset-stroke-data.parquet" \
     --target stroke \
     --test-size 0.2 \
     --save-splits || { echo "Training failed for healthcare-dataset-stroke-data"; exit 1; }
