@@ -13,6 +13,7 @@ Usage examples:
 Switch datasets by changing --data and --target (and optionally --drop-cols).
 Only CatBoost, XGBoost, LightGBM algorithms are used.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -62,7 +63,9 @@ def setup_logging(verbose: bool) -> None:
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data", required=True, help="Path to CSV dataset")
-    parser.add_argument("--target", required=False, default=None, help="Target column name (binary)")
+    parser.add_argument(
+        "--target", required=False, default=None, help="Target column name (binary)"
+    )
     parser.add_argument(
         "--positive-label",
         required=False,
@@ -76,7 +79,9 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         help="Columns to drop before modeling. Space-separated names.",
     )
     parser.add_argument("--id-col", default=None, help="Optional ID column to drop")
-    parser.add_argument("--test-size", type=float, default=0.2, help="Test set size fraction (0-1)")
+    parser.add_argument(
+        "--test-size", type=float, default=0.2, help="Test set size fraction (0-1)"
+    )
     parser.add_argument("--random-state", type=int, default=42, help="Random seed")
     parser.add_argument(
         "--include-categorical",
@@ -89,10 +94,21 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         default=50,
         help="Maximum unique values to one-hot encode for a categorical column (columns with more unique values are dropped).",
     )
-    parser.add_argument("--n-estimators", type=int, default=300, help="Number of trees for all models")
-    parser.add_argument("--learning-rate", type=float, default=0.2, help="Learning rate for all models")
-    parser.add_argument("--max-depth", type=int, default=5, help="Max depth for trees (model defaults if not set)")
-    parser.add_argument("--n-jobs", type=int, default=os.cpu_count() or 4, help="Parallel threads")
+    parser.add_argument(
+        "--n-estimators", type=int, default=300, help="Number of trees for all models"
+    )
+    parser.add_argument(
+        "--learning-rate", type=float, default=0.2, help="Learning rate for all models"
+    )
+    parser.add_argument(
+        "--max-depth",
+        type=int,
+        default=5,
+        help="Max depth for trees (model defaults if not set)",
+    )
+    parser.add_argument(
+        "--n-jobs", type=int, default=os.cpu_count() or 4, help="Parallel threads"
+    )
     parser.add_argument(
         "--output-csv",
         default=None,
@@ -146,9 +162,9 @@ def get_dataset_name(data_path: str) -> str:
     # Remove extension and any versioning suffixes
     name = path.stem
     # Remove common suffixes
-    for suffix in ['_data', '_dataset', '-data', '-dataset', '_processed', '_cleaned']:
+    for suffix in ["_data", "_dataset", "-data", "-dataset", "_processed", "_cleaned"]:
         if name.endswith(suffix):
-            name = name[:-len(suffix)]
+            name = name[: -len(suffix)]
     return name
 
 
@@ -167,17 +183,27 @@ def create_output_dirs() -> Tuple[Path, Path, Path]:
 
 
 def train_test_preprocess(
-        df: pd.DataFrame,
-        target_col: str,
-        include_categorical: bool,
-        max_categories: int,
-        drop_cols: Optional[List[str]],
-        id_col: Optional[str],
-        positive_label,
-        test_size: float,
-        random_state: int,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, ColumnTransformer, List[
-    str], pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+    df: pd.DataFrame,
+    target_col: str,
+    include_categorical: bool,
+    max_categories: int,
+    drop_cols: Optional[List[str]],
+    id_col: Optional[str],
+    positive_label,
+    test_size: float,
+    random_state: int,
+) -> Tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    ColumnTransformer,
+    List[str],
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.Series,
+    pd.Series,
+]:
     # Drop unwanted columns
     cols_to_drop = []
     if drop_cols:
@@ -189,7 +215,9 @@ def train_test_preprocess(
         logging.info("Dropped columns: %s", cols_to_drop)
 
     if target_col not in df.columns:
-        raise ValueError(f"Target column '{target_col}' not found in data. Available: {list(df.columns)[:20]}...")
+        raise ValueError(
+            f"Target column '{target_col}' not found in data. Available: {list(df.columns)[:20]}..."
+        )
 
     y_raw = df[target_col]
     X_df = df.drop(columns=[target_col])
@@ -212,8 +240,11 @@ def train_test_preprocess(
         else:
             dropped_high_card.append(c)
     if dropped_high_card:
-        logging.info("Dropped high-cardinality categorical columns (> %d uniques): %s", max_categories,
-                     dropped_high_card)
+        logging.info(
+            "Dropped high-cardinality categorical columns (> %d uniques): %s",
+            max_categories,
+            dropped_high_card,
+        )
 
     transformers = []
     if limited_cat_cols:
@@ -248,8 +279,18 @@ def train_test_preprocess(
     X_train = np.nan_to_num(X_train, copy=False)
     X_test = np.nan_to_num(X_test, copy=False)
 
-    return X_train, X_test, np.asarray(y_train), np.asarray(
-        y_test), preproc, feature_names, X_train_df, X_test_df, y_train, y_test
+    return (
+        X_train,
+        X_test,
+        np.asarray(y_train),
+        np.asarray(y_test),
+        preproc,
+        feature_names,
+        X_train_df,
+        X_test_df,
+        y_train,
+        y_test,
+    )
 
 
 def compute_pos_weight(y_train: np.ndarray) -> float:
@@ -260,7 +301,13 @@ def compute_pos_weight(y_train: np.ndarray) -> float:
     return max(1.0, neg / pos)
 
 
-def build_models(n_estimators: int, learning_rate: float, max_depth: Optional[int], n_jobs: int, pos_weight: float):
+def build_models(
+    n_estimators: int,
+    learning_rate: float,
+    max_depth: Optional[int],
+    n_jobs: int,
+    pos_weight: float,
+):
     # Shared tree depth default per model left to library defaults if None
     models = []
 
@@ -295,7 +342,7 @@ def build_models(n_estimators: int, learning_rate: float, max_depth: Optional[in
     lgb_params = dict(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
-        num_leaves=63 if max_depth is None else min(2 ** max_depth, 1024),
+        num_leaves=63 if max_depth is None else min(2**max_depth, 1024),
         max_depth=-1 if max_depth is None else max_depth,
         subsample=0.8,
         colsample_bytree=0.8,
@@ -336,7 +383,9 @@ def predict_proba_safe(model, X: np.ndarray) -> np.ndarray:
     return preds.astype(float)
 
 
-def evaluate_model(name: str, model, X_train, y_train, X_test, y_test, dataset_name: str) -> dict:
+def evaluate_model(
+    name: str, model, X_train, y_train, X_test, y_test, dataset_name: str
+) -> dict:
     t0 = time.perf_counter()
     model.fit(X_train, y_train)
     train_time = time.perf_counter() - t0
@@ -378,7 +427,7 @@ def evaluate_model(name: str, model, X_train, y_train, X_test, y_test, dataset_n
         "fn": fn,
         "train_time_s": train_time,
         "infer_time_s": infer_time,
-        "timestamp": datetime.now().isoformat(timespec='seconds'),
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
     }
 
 
@@ -398,11 +447,16 @@ def append_or_create_metrics_csv(metrics_dir: Path, new_metrics: pd.DataFrame) -
         logging.info("Created new metrics file: %s", metrics_file)
 
 
-def save_train_test_splits(splits_dir: Path, dataset_name: str,
-                           X_train: np.ndarray, X_test: np.ndarray,
-                           y_train: pd.Series, y_test: pd.Series,
-                           preproc: ColumnTransformer,
-                           feature_names: List[str]) -> None:
+def save_train_test_splits(
+    splits_dir: Path,
+    dataset_name: str,
+    X_train: np.ndarray,
+    X_test: np.ndarray,
+    y_train: pd.Series,
+    y_test: pd.Series,
+    preproc: ColumnTransformer,
+    feature_names: List[str],
+) -> None:
     """Save train/test splits as parquet files for later use.
 
     X_* are expected to be POST-PREPROCESSING feature matrices (numeric).
@@ -414,12 +468,17 @@ def save_train_test_splits(splits_dir: Path, dataset_name: str,
     dataset_splits_dir.mkdir(parents=True, exist_ok=True)
 
     # Build DataFrames for X using provided feature names (or fallback generic names)
-    if feature_names and len(feature_names) == (X_train.shape[1] if X_train.ndim == 2 else 0):
+    if feature_names and len(feature_names) == (
+        X_train.shape[1] if X_train.ndim == 2 else 0
+    ):
         x_columns = list(feature_names)
     else:
         n_features = X_train.shape[1] if X_train.ndim == 2 else X_train.size
         x_columns = [f"f{i}" for i in range(n_features)]
-        logging.warning("Feature names not available or mismatch; using generic names f0..f%d", n_features - 1)
+        logging.warning(
+            "Feature names not available or mismatch; using generic names f0..f%d",
+            n_features - 1,
+        )
 
     X_train_df_proc = pd.DataFrame(X_train, columns=x_columns)
     X_test_df_proc = pd.DataFrame(X_test, columns=x_columns)
@@ -433,7 +492,7 @@ def save_train_test_splits(splits_dir: Path, dataset_name: str,
     y_test.to_frame().to_parquet(dataset_splits_dir / "y_test.parquet", index=False)
 
     # Save the preprocessor (to allow reproducing the transform if needed elsewhere)
-    with open(dataset_splits_dir / "preprocessor.pkl", 'wb') as f:
+    with open(dataset_splits_dir / "preprocessor.pkl", "wb") as f:
         pickle.dump(preproc, f)
 
     # Save split info as JSON
@@ -446,15 +505,87 @@ def save_train_test_splits(splits_dir: Path, dataset_name: str,
         "positive_samples_test": int(y_test.sum()),
         "positive_ratio_train": float(y_train.mean()),
         "positive_ratio_test": float(y_test.mean()),
-        "test_size": float(X_test_df_proc.shape[0] / max(1, (X_train_df_proc.shape[0] + X_test_df_proc.shape[0]))),
-        "timestamp": datetime.now().isoformat(timespec='seconds')
+        "test_size": float(
+            X_test_df_proc.shape[0]
+            / max(1, (X_train_df_proc.shape[0] + X_test_df_proc.shape[0]))
+        ),
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
     }
 
-    with open(dataset_splits_dir / "split_info.json", 'w') as f:
+    with open(dataset_splits_dir / "split_info.json", "w") as f:
         json.dump(split_info, f, indent=2)
 
     logging.info("Saved PREPROCESSED train/test splits to: %s", dataset_splits_dir)
-    logging.info("Split info: %d train, %d test samples, %d features", X_train_df_proc.shape[0], X_test_df_proc.shape[0], X_train_df_proc.shape[1])
+    logging.info(
+        "Split info: %d train, %d test samples, %d features",
+        X_train_df_proc.shape[0],
+        X_test_df_proc.shape[0],
+        X_train_df_proc.shape[1],
+    )
+
+
+def build_single_model(model_name: str, args: argparse.Namespace, pos_weight: float):
+    """Build a single specified model"""
+    if model_name == "CatBoost":
+        return CatBoostClassifier(
+            loss_function="Logloss",
+            eval_metric="AUC",
+            iterations=args.n_estimators,
+            learning_rate=args.learning_rate,
+            depth=args.max_depth if args.max_depth is not None else 6,
+            random_seed=42,
+            verbose=False,
+            allow_writing_files=False,
+            class_weights=[1.0, pos_weight],
+        )
+    elif model_name == "XGBoost":
+        return XGBClassifier(
+            n_estimators=args.n_estimators,
+            learning_rate=args.learning_rate,
+            max_depth=args.max_depth if args.max_depth is not None else 6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            objective="binary:logistic",
+            eval_metric="auc",
+            n_jobs=args.n_jobs,
+            tree_method="hist",
+            reg_lambda=1.0,
+            scale_pos_weight=pos_weight,
+        )
+    elif model_name == "LightGBM":
+        return LGBMClassifier(
+            n_estimators=args.n_estimators,
+            learning_rate=args.learning_rate,
+            num_leaves=63 if args.max_depth is None else min(2**args.max_depth, 1024),
+            max_depth=-1 if args.max_depth is None else args.max_depth,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            objective="binary",
+            n_jobs=args.n_jobs,
+            random_state=42,
+            reg_lambda=1.0,
+            scale_pos_weight=pos_weight,
+            verbose=-1,
+        )
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
+
+
+def train_single_model(
+    model_name: str,
+    args: argparse.Namespace,
+    X_train,
+    X_test,
+    y_train,
+    y_test,
+    dataset_name: str,
+) -> dict:
+    """Train a single specific model and return metrics"""
+    pos_weight = compute_pos_weight(y_train)
+    model = build_single_model(model_name, args, pos_weight)
+    return evaluate_model(
+        model_name, model, X_train, y_train, X_test, y_test, dataset_name
+    )
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -476,7 +607,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Load dataset
     logging.info("Loading data: %s", data_path)
-    if data_path.suffix == '.parquet':
+    if data_path.suffix == ".parquet":
         df = pd.read_parquet(data_path)
     else:
         df = pd.read_csv(data_path)
@@ -490,7 +621,18 @@ def main(argv: Optional[List[str]] = None) -> int:
         logging.info("Inferred target column: %s", target_col)
 
     # Prepare data
-    X_train, X_test, y_train, y_test, preproc, feat_names, X_train_df, X_test_df, y_train_series, y_test_series = train_test_preprocess(
+    (
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        preproc,
+        feat_names,
+        X_train_df,
+        X_test_df,
+        y_train_series,
+        y_test_series,
+    ) = train_test_preprocess(
         df=df,
         target_col=target_col,
         include_categorical=bool(args.include_categorical),
@@ -512,37 +654,81 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Save train/test splits if requested (save POST-PREPROCESSING features)
     if args.save_splits:
-        save_train_test_splits(splits_dir, dataset_name, X_train, X_test, y_train_series, y_test_series, preproc, feat_names)
+        save_train_test_splits(
+            splits_dir,
+            dataset_name,
+            X_train,
+            X_test,
+            y_train_series,
+            y_test_series,
+            preproc,
+            feat_names,
+        )
 
     pos_weight = compute_pos_weight(y_train)
     logging.info("Computed positive class weight (neg/pos): %.3f", pos_weight)
 
-    models = build_models(
-        n_estimators=args.n_estimators,
-        learning_rate=args.learning_rate,
-        max_depth=args.max_depth,
-        n_jobs=args.n_jobs,
-        pos_weight=pos_weight,
-    )
+    # Check if we should run only one model
+    model_to_run = os.environ.get("CURRENT_MODEL") or os.environ.get("LOAD_MODEL")
 
-    results = []
-    probs_to_save = {}
+    if model_to_run:
+        # ===== SINGLE MODEL MODE =====
+        logging.info("=== TRAINING SINGLE MODEL: %s ===", model_to_run)
 
-    for name, model in models:
-        logging.info("Training model: %s", name)
-        metrics = evaluate_model(name, model, X_train, y_train, X_test, y_test, dataset_name)
-        results.append(metrics)
+        # Train only the specified model
+        metrics = train_single_model(
+            model_to_run, args, X_train, X_test, y_train, y_test, dataset_name
+        )
+        results = [metrics]
 
-        # Save model with dataset name
-        model_filename = models_dir / f"{dataset_name}_{name}.pkl"
-        with open(model_filename, 'wb') as file:
+        # Save the single model
+        model_filename = models_dir / f"{dataset_name}_{model_to_run}.pkl"
+        # We need to get the actual model object - modify train_single_model to return it
+        # For now, we'll rebuild it for saving
+        model = build_single_model(model_to_run, args, pos_weight)
+        model.fit(X_train, y_train)
+        with open(model_filename, "wb") as file:
             pickle.dump(model, file)
-        logging.info("Saved model to: %s", model_filename)
+        logging.info("Saved single model to: %s", model_filename)
 
+        # Handle probabilities saving for single model
+        probs_to_save = {}
         if args.save_probs:
             y_proba = predict_proba_safe(model, X_test)
-            probs_to_save[name] = y_proba.tolist()
+            probs_to_save[model_to_run] = y_proba.tolist()
 
+    else:
+        # ===== MULTI MODEL MODE (ORIGINAL BEHAVIOR) =====
+        logging.info("=== TRAINING ALL MODELS ===")
+        models = build_models(
+            n_estimators=args.n_estimators,
+            learning_rate=args.learning_rate,
+            max_depth=args.max_depth,
+            n_jobs=args.n_jobs,
+            pos_weight=pos_weight,
+        )
+
+        results = []
+        probs_to_save = {}
+
+        for name, model in models:
+            logging.info("Training model: %s", name)
+            metrics = evaluate_model(
+                name, model, X_train, y_train, X_test, y_test, dataset_name
+            )
+            results.append(metrics)
+
+            # Save model with dataset name
+            model_filename = models_dir / f"{dataset_name}_{name}.pkl"
+            with open(model_filename, "wb") as file:
+                pickle.dump(model, file)
+            logging.info("Saved model to: %s", model_filename)
+
+            if args.save_probs:
+                y_proba = predict_proba_safe(model, X_test)
+                probs_to_save[name] = y_proba.tolist()
+
+    # ===== COMMON OUTPUT PROCESSING =====
     # Metrics table
     df_metrics = pd.DataFrame(results)
     order = [
@@ -567,7 +753,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Log as a clean table
     pd.set_option("display.max_columns", None)
     pd.set_option("display.width", 120)
-    pd.set_option("display.float_format", lambda v: f"{v:0.4f}" if isinstance(v, (float, np.floating)) else str(v))
+    pd.set_option(
+        "display.float_format",
+        lambda v: f"{v:0.4f}" if isinstance(v, (float, np.floating)) else str(v),
+    )
     logging.info("\n%s", df_metrics.to_string(index=False))
 
     # Save metrics to single consolidated CSV file
@@ -582,7 +771,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         df_metrics.to_csv(out_path, index=False)
         logging.info("Saved metrics CSV to additional location: %s", out_path)
 
-    if args.save_probs:
+    # Save probabilities if requested
+    if args.save_probs and probs_to_save:
         probs_filename = splits_dir / dataset_name / "predicted_probabilities.json"
         probs_filename.parent.mkdir(parents=True, exist_ok=True)
         with open(probs_filename, "w", encoding="utf-8") as f:
