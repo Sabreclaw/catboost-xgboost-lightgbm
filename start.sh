@@ -418,40 +418,44 @@ PY
     $PIPBIN install -r "$REQ_FILE"
   fi
 
-  TRAIN_SCRIPT="$REPO_ROOT/training-scripts/training.py"
+  TRAIN_SCRIPT="$REPO_ROOT/training-scripts/script.sh"
   if [[ ! -f "$TRAIN_SCRIPT" ]]; then
     echo "ERROR: Training script not found: $TRAIN_SCRIPT" >&2
     exit 1
   fi
 
   echo "Running training for diabetic_data.parquet"
-  $PYBIN "$TRAIN_SCRIPT" \
+  bash "$TRAIN_SCRIPT" \
     --data "$REPO_ROOT/training-scripts/diabetic_data.parquet" \
     --target readmitted \
     --positive-label ">30" \
     --test-size 0.2 \
+    --models XGBoost CatBoost LightGBM \
     --save-splits || { echo "Training failed for diabetic_data"; exit 1; }
 
   echo "Running training for credit_card_transactions.parquet"
-  $PYBIN "$TRAIN_SCRIPT" \
+  bash "$TRAIN_SCRIPT" \
     --data "$REPO_ROOT/training-scripts/credit_card_transactions.parquet" \
     --target is_fraud \
     --test-size 0.2 \
+    --models XGBoost CatBoost LightGBM \
     --drop-cols "Unnamed: 0" first last street city state zip lat long dob trans_num merch_zipcode merchant job \
     --save-splits || { echo "Training failed for credit_card_transactions"; exit 1; }
 
   echo "Running training for UNSW_NB15_merged.parquet"
-  $PYBIN "$TRAIN_SCRIPT" \
+  bash "$TRAIN_SCRIPT" \
     --data "$REPO_ROOT/training-scripts/UNSW_NB15_merged.parquet" \
     --target label \
     --test-size 0.2 \
+    --models XGBoost CatBoost LightGBM \
     --save-splits || { echo "Training failed for UNSW_NB15_merged"; exit 1; }
 
   echo "Running training for healthcare-dataset-stroke-data.parquet"
-  $PYBIN "$TRAIN_SCRIPT" \
+  bash "$TRAIN_SCRIPT" \
     --data "$REPO_ROOT/training-scripts/healthcare-dataset-stroke-data.parquet" \
     --target stroke \
     --test-size 0.2 \
+    --models XGBoost CatBoost LightGBM \
     --save-splits || { echo "Training failed for healthcare-dataset-stroke-data"; exit 1; }
 
   echo "All trainings completed. Splits are saved under experiment-results/splits/<dataset>/"

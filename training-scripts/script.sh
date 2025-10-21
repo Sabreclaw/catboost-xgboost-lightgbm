@@ -52,7 +52,9 @@ TS="$(date +%Y%m%d-%H%M%S)"
 ENERGY_CSV="$EXP_DIR/model_energy.csv"
 
 # Initialize energy CSV
-echo "timestamp,dataset,model,energy_joules,execution_seconds,mean_power_w,training_duration_s,exit_code" >> "$ENERGY_CSV"
+if [[ ! -f "$ENERGY_CSV" ]]; then
+    echo "timestamp,dataset,model,energy_joules,execution_seconds,mean_power_w,training_duration_s,exit_code" >> "$ENERGY_CSV"
+fi
 
 if [[ ! -f "$TRAINING_SCRIPT" ]]; then
   echo "ERROR: Training script not found: $TRAINING_SCRIPT" >&2
