@@ -21,6 +21,11 @@ DURATION="${4:-${DURATION:-24h}}"
 LOGLEVEL="${5:-${LOGLEVEL:-INFO}}"
 MAX_REQUESTS="${6:-${MAX_REQUESTS:-20000}}"
 
+# Energibridge integration
+ENERGIBRIDGE_OUT="$EXP_DIR/energibridge-out-$$.txt"
+ENERGIBRIDGE_CSV="$EXP_DIR/energibridge-test.csv"
+ENERGIBRIDGE_PID=""
+
 if ! command -v locust >/dev/null 2>&1; then
   echo "ERROR: locust is not installed. Run: pip install -r ../requirements.txt" >&2
   exit 1
@@ -42,6 +47,24 @@ PREFIX="$EXP_DIR/${TS}_${DATASET_NAME}_${LOAD_MODEL:-model}"
 
 STOP_CALLED=false
 cleanup() {
+  if [[ -n "${ENERGIBRIDGE_PID:-}" ]]; then
+    echo "Killing energibridge process $ENERGIBRIDGE_PID"
+    kill "$ENERGIBRIDGE_PID" 2>/dev/null || true
+    wait "$ENERGIBRIDGE_PID" 2>/dev/null || true
+    # Extract results
+    if [[ -f "$ENERGIBRIDGE_OUT" ]]; then
+      # Example line: Energy consumption in joules: 9410.475979616192 for 495.29175 sec of execution.
+      awk -v dataset="$DATASET_NAME" -v model="${LOAD_MODEL:-model}" '/Energy consumption in joules:/ {
+        for(i=1;i<=NF;i++) {
+          if($i=="joules:") joules=$(i+1);
+          if($i=="for") seconds=$(i+1);
+        }
+        print dataset "," model "," joules "," seconds
+      }' "$ENERGIBRIDGE_OUT" >> "$ENERGIBRIDGE_CSV"
+      echo "energibridge results saved to $ENERGIBRIDGE_CSV"
+    fi
+  fi
+
   if command -v curl >/dev/null 2>&1; then
     if [[ "$STOP_CALLED" != true ]]; then
       echo "Stopping energy profiling at $HOST/energy-measurement/stop (cleanup)"
@@ -50,6 +73,16 @@ cleanup() {
   fi
 }
 trap cleanup EXIT INT TERM
+
+# Start energibridge local energy measurement (background)
+if command -v energibridge >/dev/null 2>&1; then
+  echo "Starting energibridge energy measurement..."
+  energibridge --summary -i 100 -o energibridge.csv sleep 1e9 >"$ENERGIBRIDGE_OUT" 2>&1 &
+  ENERGIBRIDGE_PID=$!
+  echo "energibridge started with PID $ENERGIBRIDGE_PID"
+else
+  echo "WARN: energibridge not found; skipping local energy measurement" >&2
+fi
 
 # Start energy measurement (best effort)
 if command -v curl >/dev/null 2>&1; then
