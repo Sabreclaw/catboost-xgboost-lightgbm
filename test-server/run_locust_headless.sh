@@ -23,7 +23,7 @@ MAX_REQUESTS="${6:-${MAX_REQUESTS:-20000}}"
 
 # Energibridge integration
 ENERGIBRIDGE_OUT="$EXP_DIR/energibridge-out-$$.txt"
-ENERGIBRIDGE_CSV="$EXP_DIR/energibridge-test.csv"
+ENERGIBRIDGE_CSV="$EXP_DIR/test-machine.csv"
 ENERGIBRIDGE_PID=""
 
 if ! command -v locust >/dev/null 2>&1; then
