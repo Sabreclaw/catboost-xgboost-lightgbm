@@ -246,7 +246,7 @@ if stop_json.exists():
 rows = [
     ("Total requests", f"{int(total_requests):,}" if total_requests is not None else "-"),
     ("Mean latency (ms)", f"{avg_resp_ms:.2f}" if avg_resp_ms is not None else "-"),
-    ("Test duration (config)", duration_conf),
+    ("Test duration (config)", f"{duration_s:.2f}"),
     ("Energy (J)", f"{energy_j:.3f}" if isinstance(energy_j, (int, float)) else "-"),
     ("Mean power (W)", f"{mean_power:.3f}" if isinstance(mean_power, (int, float)) else "-"),
     ("Mean CPU usage (%)", f"{mean_cpu:.3f}" if isinstance(mean_cpu, (int, float)) else "-"),
@@ -279,7 +279,7 @@ row = {
     'model': model_key,
     'total_requests': int(total_requests) if isinstance(total_requests, (int, float)) and total_requests is not None else '',
     'mean_latency_ms': float(f"{avg_resp_ms:.6f}") if isinstance(avg_resp_ms, (int, float)) and avg_resp_ms is not None else '',
-    'test_duration_config': duration_conf,
+    'test_duration_config': f"{duration_s:.2f}",
     'energy_j': float(f"{energy_j:.6f}") if isinstance(energy_j, (int, float)) and energy_j is not None else '',
     'mean_power_w': float(f"{mean_power:.6f}") if isinstance(mean_power, (int, float)) and mean_power is not None else '',
     'mean_cpu_percent': float(f"{mean_cpu:.6f}") if isinstance(mean_cpu, (int, float)) and mean_cpu is not None else '',

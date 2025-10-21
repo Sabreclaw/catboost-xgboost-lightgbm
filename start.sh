@@ -261,9 +261,9 @@ test_mode() {
   local HOST="${1:-${HOST:-http://localhost:8000}}"
   local USERS="${2:-${USERS:-100}}"
   local SPAWN_RATE="${3:-${SPAWN_RATE:-10}}"
-  local DURATION="${4:-${DURATION:-24h}}"
+  local DURATION="${4:-${DURATION:-60s}}"
   local LOGLEVEL="${5:-${LOGLEVEL:-INFO}}"
-  local MAX_REQUESTS="${6:-${MAX_REQUESTS:-10000}}"
+  local MAX_REQUESTS="${6:-${MAX_REQUESTS:-15000}}"
 
   echo "Current settings:"
   echo "  HOST=$HOST"
