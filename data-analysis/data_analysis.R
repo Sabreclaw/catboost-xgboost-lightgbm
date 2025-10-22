@@ -8,6 +8,7 @@ library(grid)  # For adding separators
 file_name <- "experiment-results/run_table.csv" 
 df_raw <- read.csv(file_name)
 df <- subset(df_raw, total_requests >= 15000)
+df$mean_memory_mb <- df$mean_memory_gb * 1000
 
 # --- 3. Prepare Data for Plotting ---
 df$database <- as.factor(df$database)
@@ -37,7 +38,7 @@ create_plot <- function(metric_to_plot, metric_ylabel, metric_title) {
 }
 
 # --- 5. Create All Plots (without legends) ---
-plot1 <- create_plot("mean_memory_gb", "Memory Consumption (gb)", "Memory Consumption")
+plot1 <- create_plot("mean_memory_mb", "Memory Usage (mb)", "Memory Usage")
 plot2 <- create_plot("mean_latency_ms", "Execution Time (ms)", "Execution Time")
 plot3 <- create_plot("mean_cpu_percent", "CPU Usage (%)", "CPU Usage")
 plot4 <- create_plot("energy_j", "Energy (J)", "Energy Consumption")
@@ -51,7 +52,7 @@ get_legend <- function(plot) {
   return(legend)
 }
 
-plot_with_legend <- ggplot(df, aes(x = model, y = mean_memory_gb, fill = model)) +
+plot_with_legend <- ggplot(df, aes(x = model, y = mean_memory_mb, fill = model)) +
   geom_boxplot() +
   labs(fill = "Algorithm") +
   theme(legend.position = "bottom")
@@ -115,3 +116,4 @@ final_plot <- grid.arrange(
 
 # Display the final plot
 print(final_plot)
+
