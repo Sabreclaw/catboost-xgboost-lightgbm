@@ -23,7 +23,10 @@ class EnergyProfiler:
 
     def _safe_name(self, model_name: Optional[str]) -> str:
         name = (model_name or os.getenv("LOAD_MODEL") or "model").strip()
-        return "".join(c for c in name if c.isalnum() or c in ("-", "_", ".")).strip() or "model"
+        return (
+            "".join(c for c in name if c.isalnum() or c in ("-", "_", ".")).strip()
+            or "model"
+        )
 
     def _format_cmd_and_out(self, model_name: Optional[str]) -> Tuple[str, str]:
         safe = self._safe_name(model_name)
@@ -53,12 +56,16 @@ class EnergyProfiler:
             return {"pid": proc.pid, "cmd": cmd, "output_file": out_file}
 
     @staticmethod
-    def _parse_energy_stdout(stdout_text: str) -> Tuple[Optional[float], Optional[float]]:
+    def _parse_energy_stdout(
+        stdout_text: str,
+    ) -> Tuple[Optional[float], Optional[float]]:
         # Looks like: "Energy consumption in joules: 3719.35595 for 65.10 sec of execution."
         energy = None
         duration = None
         if stdout_text:
-            m_e = re.search(r"Energy consumption in joules:\s*([0-9]+\.?[0-9]*)", stdout_text)
+            m_e = re.search(
+                r"Energy consumption in joules:\s*([0-9]+\.?[0-9]*)", stdout_text
+            )
             if m_e:
                 try:
                     energy = float(m_e.group(1))
@@ -115,7 +122,7 @@ class EnergyProfiler:
                         v = row.get(mem_col)
                         if v not in (None, ""):
                             try:
-                                mem_sum_gb += float(v) / (1024 ** 3)
+                                mem_sum_gb += float(v) / (1000**3)
                                 mem_count += 1
                             except ValueError:
                                 pass
@@ -183,7 +190,9 @@ class EnergyProfiler:
                 and (duration_s > 0)
             ):
                 try:
-                    csv_metrics["mean_power_watts"] = float(energy_j) / float(duration_s)
+                    csv_metrics["mean_power_watts"] = float(energy_j) / float(
+                        duration_s
+                    )
                 except Exception:
                     pass
 
