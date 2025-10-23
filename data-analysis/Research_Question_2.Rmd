@@ -1,0 +1,493 @@
+# Load libraries
+
+```{r}
+library(tidyverse)
+library(rstatix)
+library(ARTool)
+library(ggplot2)
+library(ggpubr)
+```
+
+# Read and prepare data
+
+```{r}
+data_raw <- read.csv("../experiment-results/run_table.csv")
+data <- subset(data_raw, total_requests >= 15000)
+```
+
+# Ensure factors are properly set
+
+```{r}
+data$database <- factor(data$database)
+data$model <- factor(data$model)
+```
+
+```{r}
+cat("\n=== DATA SUMMARY RQ2 ===\n")
+cat("Total observations:", nrow(data), "\n")
+cat("Datasets:", levels(data$database), "\n")
+cat("Models:", levels(data$model), "\n")
+cat("Observations per dataset:\n")
+print(table(data$database))
+cat("\nObservations per model:\n")
+print(table(data$model))
+```
+
+# 2. NORMALITY TESTS FOR EXECUTION TIME
+
+# Shapiro-Wilk test for each group
+
+```{r}
+normality_results_rq2 <- data %>%
+  group_by(model, database) %>%
+  shapiro_test(mean_latency_ms)
+
+print(normality_results_rq2)
+```
+
+# Summary of normality violations
+
+```{r}
+normality_summary_rq2 <- normality_results_rq2 %>%
+  group_by(database) %>%
+  summarise(
+    total_groups = n(),
+    normal_groups = sum(p > 0.05),
+    non_normal_groups = sum(p <= 0.05)
+  )
+
+print(normality_summary_rq2)
+```
+
+# Visual inspection
+
+```{r}
+qqplot_rq2 <- ggqqplot(data, "mean_latency_ms", facet.by = c("model", "database"))
+print(qqplot_rq2)
+```
+
+# 3. DESCRIPTIVE STATISTICS FOR EXECUTION TIME
+
+# Detailed stats for each model-dataset combination
+
+```{r}
+descriptive_stats_rq2 <- data %>%
+  group_by(database, model) %>%
+  get_summary_stats(mean_latency_ms, type = "common")
+
+print(descriptive_stats_rq2)
+```
+
+# Summary by dataset only
+
+```{r}
+stats_by_dataset_rq2 <- data %>%
+  group_by(database) %>%
+  get_summary_stats(mean_latency_ms, type = "common")
+
+cat("\nOverall by Dataset (Execution Time):\n")
+print(stats_by_dataset_rq2)
+```
+
+# Summary by model only
+
+```{r}
+stats_by_model_rq2 <- data %>%
+  group_by(model) %>%
+  get_summary_stats(mean_latency_ms, type = "common")
+
+print(stats_by_model_rq2)
+```
+
+# 4. HYPOTHESIS RQ2: KRUSKAL-WALLIS TESTS PER DATASET FOR EXECUTION TIME
+
+# Get unique datasets
+
+```{r}
+datasets <- unique(data$database)
+```
+
+# Apply Bonferroni correction for multiple tests
+
+```{r}
+n_tests_rq2 <- length(datasets)
+alpha_corrected_rq2 <- 0.05 / n_tests_rq2
+
+cat("Number of datasets (tests):", n_tests_rq2, "\n")
+cat("Original alpha: 0.05\n")
+cat("Bonferroni-corrected alpha:", alpha_corrected_rq2, "\n\n")
+```
+
+# Storage for results
+
+```{r}
+kw_results_list_rq2 <- list()
+effect_sizes_list_rq2 <- list()
+posthoc_results_list_rq2 <- list()
+```
+
+# Perform Kruskal-Wallis test for each dataset
+
+```{r}
+for (ds in datasets) {
+  cat("\n", rep("=", 70), "\n", sep="")
+  cat("DATASET:", as.character(ds), "- EXECUTION TIME ANALYSIS\n")
+  cat(rep("=", 70), "\n", sep="")
+  
+  # Subset data for this dataset
+  data_subset <- data %>% filter(database == ds)
+  
+  # Descriptive stats for this dataset
+  cat("\nDescriptive Statistics (Execution Time):\n")
+  desc_stats <- data_subset %>%
+    group_by(model) %>%
+    get_summary_stats(mean_latency_ms, type = "common")
+  print(desc_stats)
+  
+  # Kruskal-Wallis test
+  kw_test <- kruskal.test(mean_latency_ms ~ model, data = data_subset)
+  
+  cat("\nKruskal-Wallis Test:\n")
+  cat("H statistic:", round(kw_test$statistic, 3), "\n")
+  cat("p-value:", format.pval(kw_test$p.value, digits = 4), "\n")
+  cat("Significant at α =", alpha_corrected_rq2, "?", 
+      ifelse(kw_test$p.value < alpha_corrected_rq2, "YES ***", "NO"), "\n")
+  
+  # Effect size
+  effect_size <- kruskal_effsize(data_subset, mean_latency_ms ~ model)
+  cat("Effect size (epsilon-squared):", round(effect_size$effsize, 3), "\n")
+  cat("Effect magnitude:", effect_size$magnitude, "\n")
+  
+  # Store results
+  kw_results_list_rq2[[as.character(ds)]] <- list(
+    dataset = as.character(ds),
+    statistic = kw_test$statistic,
+    p_value = kw_test$p.value,
+    significant = kw_test$p.value < alpha_corrected_rq2,
+    effect_size = effect_size$effsize,
+    magnitude = effect_size$magnitude
+  )
+  
+  # Post-hoc tests if significant
+  if (kw_test$p.value < alpha_corrected_rq2) {
+    cat("\n*** Significant difference detected ***\n")
+    cat("Performing post-hoc pairwise comparisons (Dunn's test):\n\n")
+    
+    dunn_results <- dunn_test(data_subset, mean_latency_ms ~ model, 
+                              p.adjust.method = "bonferroni")
+    print(dunn_results)
+    
+    posthoc_results_list_rq2[[as.character(ds)]] <- dunn_results
+    
+    # Interpretation
+    cat("\nInterpretation:\n")
+    sig_comparisons <- dunn_results %>% filter(p.adj < 0.05)
+    if (nrow(sig_comparisons) > 0) {
+      for (i in 1:nrow(sig_comparisons)) {
+        cat("  -", sig_comparisons$group1[i], "vs", sig_comparisons$group2[i], 
+            ": p =", format.pval(sig_comparisons$p.adj[i], digits = 3), 
+            sig_comparisons$p.adj.signif[i], "\n")
+      }
+    }
+  } else {
+    cat("\n*** No significant difference detected ***\n")
+    cat("Post-hoc tests not performed.\n")
+  }
+}
+```
+
+# 5. SUMMARY TABLE OF RESULTS RQ2
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("SUMMARY TABLE: HYPOTHESIS RQ2 RESULTS (EXECUTION TIME)\n")
+cat(rep("=", 70), "\n", sep="")
+```
+
+# Create summary dataframe
+
+```{r}
+summary_df_rq2 <- do.call(rbind, lapply(kw_results_list_rq2, function(x) {
+  data.frame(
+    Dataset = x$dataset,
+    H_statistic = round(x$statistic, 3),
+    p_value = format.pval(x$p_value, digits = 4),
+    Significant = ifelse(x$significant, "YES", "NO"),
+    Effect_Size = round(x$effect_size, 3),
+    Magnitude = x$magnitude
+  )
+}))
+print(summary_df_rq2, row.names = FALSE)
+```
+
+# Count significant results
+
+```{r}
+n_significant_rq2 <- sum(summary_df_rq2$Significant == "YES")
+
+cat("\n")
+cat("Datasets with significant algorithm differences (execution time):", n_significant_rq2, "out of", n_tests_rq2, "\n")
+cat("Bonferroni-corrected significance level:", alpha_corrected_rq2, "\n")
+```
+
+# 6. INTERACTION EFFECT (EXPLORATORY) FOR EXECUTION TIME
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("EXPLORATORY ANALYSIS: INTERACTION EFFECT (EXECUTION TIME)\n")
+cat(rep("=", 70), "\n", sep="")
+cat("Testing if algorithm performance patterns vary across datasets for execution time\n\n")
+```
+
+# Aligned Rank Transform ANOVA for interaction
+
+```{r}
+art_model_rq2 <- art(mean_latency_ms ~ model * database, data = data)
+art_anova_rq2 <- anova(art_model_rq2)
+
+cat("ART-ANOVA Results (Execution Time):\n")
+print(art_anova_rq2)
+
+if (art_anova_rq2$`Pr(>F)`[3] < 0.05) {
+  cat("\n*** Significant interaction detected (p < 0.05) ***\n")
+  cat("This indicates that algorithm performance patterns for execution time depend on the dataset.\n")
+  cat("The optimal algorithm choice for latency is dataset-dependent.\n")
+} else {
+  cat("\n*** No significant interaction detected ***\n")
+  cat("Algorithm ranking for execution time is consistent across datasets.\n")
+}
+```
+
+# 7. VISUALIZATION FOR EXECUTION TIME
+
+# Box plots by dataset (faceted by model)
+
+```{r}
+p1_rq2 <- ggplot(data, aes(x = model, y = mean_latency_ms, fill = model)) +
+  geom_boxplot() +
+  facet_wrap(~database, scales = "free_y") +
+  labs(title = "Execution Time by Model for Each Dataset",
+       subtitle = "Testing H0: No algorithm differences within each dataset",
+       x = "Model", y = "Mean Latency (ms)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+```
+
+# Box plots by model (faceted by dataset) - alternative view
+
+```{r}
+p2_rq2 <- ggplot(data, aes(x = database, y = mean_latency_ms, fill = database)) +
+  geom_boxplot() +
+  facet_wrap(~model, scales = "free_y") +
+  labs(title = "Execution Time by Dataset for Each Model",
+       x = "Dataset", y = "Mean Latency (ms)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+```
+
+# Interaction plot with significance indicators
+
+```{r}
+summary_stats_rq2 <- data %>%
+  group_by(database, model) %>%
+  summarise(
+    median = median(mean_latency_ms),
+    mean = mean(mean_latency_ms),
+    se = sd(mean_latency_ms) / sqrt(n()),
+    .groups = "drop"
+  )
+```
+
+# Add significance indicators from our tests
+
+```{r}
+summary_stats_rq2$significant <- NA
+for (ds in datasets) {
+  if (kw_results_list_rq2[[as.character(ds)]]$significant) {
+    summary_stats_rq2$significant[summary_stats_rq2$database == ds] <- "Significant"
+  } else {
+    summary_stats_rq2$significant[summary_stats_rq2$database == ds] <- "Not Significant"
+  }
+}
+```
+
+```{r}
+p3_rq2 <- ggplot(summary_stats_rq2, aes(x = database, y = median, 
+                                color = model, group = model,
+                                linetype = significant)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.2) +
+  labs(title = "Interaction Plot with Significance Indicators (Execution Time)",
+       subtitle = paste("Bonferroni-corrected α =", round(alpha_corrected_rq2, 4)),
+       x = "Dataset", y = "Median Execution Time (ms)",
+       color = "Model", linetype = "Algorithm Effect") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Violin plots with individual points
+
+```{r}
+p4_rq2 <- ggplot(data, aes(x = model, y = mean_latency_ms, fill = model)) +
+  geom_violin(alpha = 0.6) +
+  geom_boxplot(width = 0.2, alpha = 0.8) +
+  facet_wrap(~database, scales = "free_y", nrow = 2) +
+  labs(title = "Distribution of Execution Time",
+       subtitle = "Violin plots with boxplots overlay",
+       x = "Model", y = "Mean Latency (ms)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+```
+
+# Print plots
+
+```{r}
+print(p1_rq2)
+print(p2_rq2)
+print(p3_rq2)
+print(p4_rq2)
+```
+
+# Save plots
+
+```{r}
+ggsave("plot_faceted_by_dataset_rq2.png", p1_rq2, width = 12, height = 8)
+ggsave("plot_faceted_by_model_rq2.png", p2_rq2, width = 12, height = 8)
+ggsave("plot_interaction_significance_rq2.png", p3_rq2, width = 10, height = 6)
+ggsave("plot_violin_distributions_rq2.png", p4_rq2, width = 12, height = 8)
+```
+
+# 8. HYPOTHESIS RQ2 CONCLUSION
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("HYPOTHESIS RQ2: CONCLUSION (EXECUTION TIME)\n")
+cat(rep("=", 70), "\n\n")
+
+cat("Null Hypothesis (H0):\n")
+cat("  For each dataset ds and metric m (execution time), μ_alg1,ds = μ_alg2,ds = μ_alg3,ds\n")
+cat("  (No algorithm differences within any dataset for execution time)\n\n")
+
+cat("Alternative Hypothesis (H1):\n")
+cat("  There exists at least one dataset ds where algorithms differ in execution time\n\n")
+
+cat("Results:\n")
+cat("--------\n")
+
+for (ds in datasets) {
+  result <- kw_results_list_rq2[[as.character(ds)]]
+  cat(sprintf("%-30s: H = %6.3f, p = %s, Effect = %.3f (%s) - %s\n",
+              as.character(ds),
+              result$statistic,
+              format.pval(result$p_value, digits = 3),
+              result$effect_size,
+              result$magnitude,
+              ifelse(result$significant, "REJECT H0", "FAIL TO REJECT H0")))
+}
+```
+
+```{r}
+cat("\nOverall Conclusion RQ2:\n")
+cat("----------------------\n")
+
+if (n_significant_rq2 > 0) {
+  cat("We REJECT the null hypothesis H0 for execution time.\n\n")
+  cat("Significant algorithm differences in execution time were found in", n_significant_rq2, 
+      "out of", n_tests_rq2, "datasets.\n")
+  cat("This provides strong evidence that algorithm choice matters for execution time\n")
+  cat("performance, and the magnitude of differences varies by dataset.\n\n")
+  
+  # List datasets with significant differences
+  cat("Datasets with significant algorithm differences (execution time):\n")
+  for (ds in datasets) {
+    if (kw_results_list_rq2[[as.character(ds)]]$significant) {
+      cat("  -", as.character(ds), "\n")
+    }
+  }
+  
+  # List datasets without significant differences
+  if (n_significant_rq2 < n_tests_rq2) {
+    cat("\nDatasets without significant algorithm differences (execution time):\n")
+    for (ds in datasets) {
+      if (!kw_results_list_rq2[[as.character(ds)]]$significant) {
+        cat("  -", as.character(ds), "\n")
+      }
+    }
+  }
+} else {
+  cat("We FAIL TO REJECT the null hypothesis H0 for execution time.\n\n")
+  cat("No significant algorithm differences in execution time were found in any dataset\n")
+  cat("after Bonferroni correction (α =", alpha_corrected_rq2, ").\n")
+  cat("However, this may be due to conservative correction for multiple testing.\n")
+}
+```
+
+# 9. COMPARISON WITH RQ1 RESULTS
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("COMPARISON: RQ1 (ENERGY) vs RQ2 (EXECUTION TIME)\n")
+cat(rep("=", 70), "\n", sep="")
+
+cat("\nSummary Comparison:\n")
+cat("Dataset\t\t\tRQ1 Energy\tRQ2 Execution Time\n")
+cat("--------\t\t\t----------\t------------------\n")
+for (ds in datasets) {
+  rq1_sig <- ifelse(kw_results_list[[as.character(ds)]]$significant, "SIG", "NS")
+  rq2_sig <- ifelse(kw_results_list_rq2[[as.character(ds)]]$significant, "SIG", "NS")
+  cat(sprintf("%-25s\t%s\t\t%s\n", as.character(ds), rq1_sig, rq2_sig))
+}
+
+# Correlation between energy and execution time
+cat("\nCorrelation Analysis:\n")
+cor_test <- cor.test(data$energy_j, data$mean_latency_ms, method = "spearman")
+cat("Spearman correlation between energy and execution time:\n")
+cat("rho =", round(cor_test$estimate, 3), ", p =", format.pval(cor_test$p.value, digits = 3), "\n")
+
+if (cor_test$p.value < 0.05) {
+  if (cor_test$estimate > 0.7) {
+    cat("Strong positive correlation: Energy consumption and execution time are closely related.\n")
+  } else if (cor_test$estimate > 0.3) {
+    cat("Moderate positive correlation: Energy consumption and execution time are related.\n")
+  } else {
+    cat("Weak positive correlation: Some relationship between energy and execution time.\n")
+  }
+} else {
+  cat("No significant correlation between energy consumption and execution time.\n")
+}
+```
+
+# 10. EXPORT RESULTS RQ2
+
+# Export summary table to CSV
+
+```{r}
+write.csv(summary_df_rq2, "hypothesis_rq2_summary.csv", row.names = FALSE)
+```
+
+# Export all post-hoc results if any
+
+```{r}
+if (length(posthoc_results_list_rq2) > 0) {
+  posthoc_combined_rq2 <- bind_rows(posthoc_results_list_rq2, .id = "dataset")
+  write.csv(posthoc_combined_rq2, "hypothesis_rq2_posthoc.csv", row.names = FALSE)
+  cat("\nPost-hoc results exported to: hypothesis_rq2_posthoc.csv\n")
+}
+```
+
+# Export comparison results
+
+```{r}
+comparison_results <- data.frame(
+  Dataset = datasets,
+  RQ2_Significant = sapply(datasets, function(ds) kw_results_list_rq2[[as.character(ds)]]$significant),
+  RQ2_Effect_Size = sapply(datasets, function(ds) kw_results_list_rq2[[as.character(ds)]]$effect_size)
+)
+
+write.csv(comparison_results, "rq1_rq2_comparison.csv", row.names = FALSE)
+cat("Comparison results exported to: rq1_rq2_comparison.csv\n")
+```

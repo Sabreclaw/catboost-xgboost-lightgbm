@@ -1,0 +1,460 @@
+# Non-parametric Statistical Analysis for Energy Efficiency
+
+# Testing Hypothesis RQ1: Algorithm differences within each dataset
+
+# Load libraries
+```{r}
+getwd()
+```
+
+```{r}
+library(tidyverse)
+library(rstatix)
+library(ARTool)
+library(ggplot2)
+library(ggpubr)
+```
+
+# Read and prepare data
+
+```{r}
+data_raw <- read.csv("../experiment-results/run_table.csv")
+df <- subset(data_raw, total_requests >= 15000)
+```
+
+# Ensure factors are properly set
+
+```{r}
+df$database <- factor(df$database)
+df$model <- factor(df$model)
+```
+
+
+```{r}
+print(data)
+```
+```{r}
+cat("\n=== DATA SUMMARY ===\n")
+cat("Total observations:", nrow(df), "\n")
+cat("Datasets:", levels(df$database), "\n")
+cat("Models:", levels(df$model), "\n")
+cat("Observations per dataset:\n")
+print(table(df$database))
+cat("\nObservations per model:\n")
+print(table(df$model))
+```
+
+# 2. NORMALITY TESTS (to confirm non-normality)
+
+# Shapiro-Wilk test for each group
+
+```{r}
+normality_results <- df %>%
+  group_by(model, database) %>%
+  shapiro_test(energy_j)
+
+print(normality_results)
+```
+
+# Summary of normality violations
+
+```{r}
+normality_summary <- normality_results %>%
+  group_by(database) %>%
+  summarise(
+    total_groups = n(),
+    normal_groups = sum(p > 0.05),
+    non_normal_groups = sum(p <= 0.05)
+  )
+
+print(normality_summary)
+```
+
+# Visual inspection
+
+```{r}
+qqplot <- ggqqplot(df, "energy_j", facet.by = c("model", "database"))
+print(qqplot)
+```
+
+# 3. DESCRIPTIVE STATISTICS
+
+# Detailed stats for each model-dataset combination
+
+```{r}
+descriptive_stats <- df %>%
+  group_by(database, model) %>%
+  get_summary_stats(energy_j, type = "common")
+
+print(descriptive_stats)
+```
+
+# Summary by dataset only
+
+```{r}
+stats_by_dataset <- df %>%
+  group_by(database) %>%
+  get_summary_stats(energy_j, type = "common")
+
+cat("\nOverall by Dataset:\n")
+print(stats_by_dataset)
+```
+
+# Summary by model only
+
+```{r}
+stats_by_model <- df %>%
+  group_by(model) %>%
+  get_summary_stats(energy_j, type = "common")
+
+print(stats_by_model)
+```
+
+# 4. HYPOTHESIS RQ1: KRUSKAL-WALLIS TESTS PER DATASET
+
+# Get unique datasets
+
+```{r}
+datasets <- unique(df$database)
+```
+
+# Apply Bonferroni correction for multiple tests
+
+```{r}
+n_tests <- length(datasets)
+alpha_corrected <- 0.05 / n_tests
+
+cat("Number of datasets (tests):", n_tests, "\n")
+cat("Original alpha: 0.05\n")
+cat("Bonferroni-corrected alpha:", alpha_corrected, "\n\n")
+```
+
+# Storage for results
+
+```{r}
+kw_results_list <- list()
+effect_sizes_list <- list()
+posthoc_results_list <- list()
+```
+
+# Perform Kruskal-Wallis test for each dataset
+
+```{r}
+for (ds in datasets) {
+  cat("\n", rep("=", 70), "\n", sep="")
+  cat("DATASET:", as.character(ds), "\n")
+  cat(rep("=", 70), "\n", sep="")
+  
+  # Subset data for this dataset
+  df_subset <- df %>% filter(database == ds)
+  
+  # Descriptive stats for this dataset
+  cat("\nDescriptive Statistics:\n")
+  desc_stats <- df_subset %>%
+    group_by(model) %>%
+    get_summary_stats(energy_j, type = "common")
+  print(desc_stats)
+  
+  # Kruskal-Wallis test
+  kw_test <- kruskal.test(energy_j ~ model, data = df_subset)
+  
+  cat("\nKruskal-Wallis Test:\n")
+  cat("H statistic:", round(kw_test$statistic, 3), "\n")
+  cat("p-value:", format.pval(kw_test$p.value, digits = 4), "\n")
+  cat("Significant at α =", alpha_corrected, "?", 
+      ifelse(kw_test$p.value < alpha_corrected, "YES ***", "NO"), "\n")
+  
+  # Effect size
+  effect_size <- kruskal_effsize(df_subset, energy_j ~ model)
+  cat("Effect size (epsilon-squared):", round(effect_size$effsize, 3), "\n")
+  cat("Effect magnitude:", effect_size$magnitude, "\n")
+  
+  # Store results
+  kw_results_list[[as.character(ds)]] <- list(
+    dataset = as.character(ds),
+    statistic = kw_test$statistic,
+    p_value = kw_test$p.value,
+    significant = kw_test$p.value < alpha_corrected,
+    effect_size = effect_size$effsize,
+    magnitude = effect_size$magnitude
+  )
+  
+  # Post-hoc tests if significant
+  if (kw_test$p.value < alpha_corrected) {
+    cat("\n*** Significant difference detected ***\n")
+    cat("Performing post-hoc pairwise comparisons (Dunn's test):\n\n")
+    
+    dunn_results <- dunn_test(df_subset, energy_j ~ model, 
+                              p.adjust.method = "bonferroni")
+    print(dunn_results)
+    
+    posthoc_results_list[[as.character(ds)]] <- dunn_results
+    
+    # Interpretation
+    cat("\nInterpretation:\n")
+    sig_comparisons <- dunn_results %>% filter(p.adj < 0.05)
+    if (nrow(sig_comparisons) > 0) {
+      for (i in 1:nrow(sig_comparisons)) {
+        cat("  -", sig_comparisons$group1[i], "vs", sig_comparisons$group2[i], 
+            ": p =", format.pval(sig_comparisons$p.adj[i], digits = 3), 
+            sig_comparisons$p.adj.signif[i], "\n")
+      }
+    }
+  } else {
+    cat("\n*** No significant difference detected ***\n")
+    cat("Post-hoc tests not performed.\n")
+  }
+}
+```
+
+# 5. SUMMARY TABLE OF RESULTS
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("SUMMARY TABLE: HYPOTHESIS RQ1 RESULTS\n")
+cat(rep("=", 70), "\n", sep="")
+```
+
+# Create summary dataframe
+
+```{r}
+summary_df <- do.call(rbind, lapply(kw_results_list, function(x) {
+  data.frame(
+    Dataset = x$dataset,
+    H_statistic = round(x$statistic, 3),
+    p_value = format.pval(x$p_value, digits = 4),
+    Significant = ifelse(x$significant, "YES", "NO"),
+    Effect_Size = round(x$effect_size, 3),
+    Magnitude = x$magnitude
+  )
+}))
+print(summary_df, row.names = FALSE)
+```
+
+# Count significant results
+
+```{r}
+n_significant <- sum(summary_df$Significant == "YES")
+
+cat("\n")
+cat("Datasets with significant algorithm differences:", n_significant, "out of", n_tests, "\n")
+cat("Bonferroni-corrected significance level:", alpha_corrected, "\n")
+```
+
+# 6. INTERACTION EFFECT (EXPLORATORY)
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("EXPLORATORY ANALYSIS: INTERACTION EFFECT\n")
+cat(rep("=", 70), "\n", sep="")
+cat("Testing if algorithm performance varies across datasets\n\n")
+```
+
+# Aligned Rank Transform ANOVA for interaction
+
+```{r}
+art_model <- art(energy_j ~ model * database, data = df)
+art_anova <- anova(art_model)
+
+cat("ART-ANOVA Results:\n")
+print(art_anova)
+
+if (art_anova$`Pr(>F)`[3] < 0.05) {
+  cat("\n*** Significant interaction detected (p < 0.05) ***\n")
+  cat("This indicates that algorithm performance depends on the dataset.\n")
+  cat("The optimal algorithm choice is dataset-dependent.\n")
+} else {
+  cat("\n*** No significant interaction detected ***\n")
+  cat("Algorithm ranking is consistent across datasets.\n")
+}
+```
+
+# 7. VISUALIZATION
+
+# Box plots by dataset (faceted by model)
+
+```{r}
+p1 <- ggplot(df, aes(x = model, y = energy_j, fill = model)) +
+  geom_boxplot() +
+  facet_wrap(~database, scales = "free_y") +
+  labs(title = "Energy Consumption by Model for Each Dataset",
+       subtitle = "Testing H0: No algorithm differences within each dataset",
+       x = "Model", y = "Energy (J)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+```
+
+# Box plots by model (faceted by dataset) - alternative view
+
+```{r}
+p2 <- ggplot(df, aes(x = database, y = energy_j, fill = database)) +
+  geom_boxplot() +
+  facet_wrap(~model, scales = "free_y") +
+  labs(title = "Energy Consumption by Dataset for Each Model",
+       x = "Dataset", y = "Energy (J)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+```
+
+# Interaction plot with significance indicators
+
+```{r}
+summary_stats <- df %>%
+  group_by(database, model) %>%
+  summarise(
+    median = median(energy_j),
+    mean = mean(energy_j),
+    se = sd(energy_j) / sqrt(n()),
+    .groups = "drop"
+  )
+```
+
+# Add significance indicators from our tests
+
+```{r}
+summary_stats$significant <- NA
+for (ds in datasets) {
+  if (kw_results_list[[as.character(ds)]]$significant) {
+    summary_stats$significant[summary_stats$database == ds] <- "Significant"
+  } else {
+    summary_stats$significant[summary_stats$database == ds] <- "Not Significant"
+  }
+}
+```
+
+```{r}
+p3 <- ggplot(summary_stats, aes(x = database, y = median, 
+                                color = model, group = model,
+                                linetype = significant)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.2) +
+  labs(title = "Interaction Plot with Significance Indicators",
+       subtitle = paste("Bonferroni-corrected α =", round(alpha_corrected, 4)),
+       x = "Dataset", y = "Median Energy (J)",
+       color = "Model", linetype = "Algorithm Effect") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Violin plots with individual points
+
+```{r}
+p4 <- ggplot(df, aes(x = model, y = energy_j, fill = model)) +
+  geom_violin(alpha = 0.6) +
+  geom_boxplot(width = 0.2, alpha = 0.8) +
+  facet_wrap(~database, scales = "free_y", nrow = 2) +
+  labs(title = "Distribution of Energy Consumption",
+       subtitle = "Violin plots with boxplots overlay",
+       x = "Model", y = "Energy (J)") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+```
+
+# Print plots
+
+```{r}
+print(p1)
+print(p2)
+print(p3)
+print(p4)
+```
+
+# Save plots
+
+```{r}
+ggsave("plot_faceted_by_dataset.png", p1, width = 12, height = 8)
+ggsave("plot_faceted_by_model.png", p2, width = 12, height = 8)
+ggsave("plot_interaction_significance.png", p3, width = 10, height = 6)
+ggsave("plot_violin_distributions.png", p4, width = 12, height = 8)
+```
+
+# 
+
+# 8. HYPOTHESIS CONCLUSION
+
+# 
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("HYPOTHESIS RQ1: CONCLUSION\n")
+cat(rep("=", 70), "\n\n")
+
+cat("Null Hypothesis (H0):\n")
+cat("  For each dataset ds, μ_alg1,ds = μ_alg2,ds = μ_alg3,ds\n")
+cat("  (No algorithm differences within any dataset)\n\n")
+
+cat("Alternative Hypothesis (H1):\n")
+cat("  There exists at least one dataset ds where algorithms differ\n\n")
+
+cat("Results:\n")
+cat("--------\n")
+
+for (ds in datasets) {
+  result <- kw_results_list[[as.character(ds)]]
+  cat(sprintf("%-30s: H = %6.3f, p = %s, Effect = %.3f (%s) - %s\n",
+              as.character(ds),
+              result$statistic,
+              format.pval(result$p_value, digits = 3),
+              result$effect_size,
+              result$magnitude,
+              ifelse(result$significant, "REJECT H0", "FAIL TO REJECT H0")))
+}
+```
+
+```{r}
+cat("\nOverall Conclusion:\n")
+cat("------------------\n")
+
+if (n_significant > 0) {
+  cat("We REJECT the null hypothesis H0.\n\n")
+  cat("Significant algorithm differences were found in", n_significant, 
+      "out of", n_tests, "datasets.\n")
+  cat("This provides strong evidence that algorithm choice matters for energy\n")
+  cat("efficiency, and the magnitude of differences varies by dataset.\n\n")
+  
+  # List datasets with significant differences
+  cat("Datasets with significant algorithm differences:\n")
+  for (ds in datasets) {
+    if (kw_results_list[[as.character(ds)]]$significant) {
+      cat("  -", as.character(ds), "\n")
+    }
+  }
+  
+  # List datasets without significant differences
+  if (n_significant < n_tests) {
+    cat("\nDatasets without significant algorithm differences:\n")
+    for (ds in datasets) {
+      if (!kw_results_list[[as.character(ds)]]$significant) {
+        cat("  -", as.character(ds), "\n")
+      }
+    }
+  }
+} else {
+  cat("We FAIL TO REJECT the null hypothesis H0.\n\n")
+  cat("No significant algorithm differences were found in any dataset\n")
+  cat("after Bonferroni correction (α =", alpha_corrected, ").\n")
+  cat("However, this may be due to conservative correction for multiple testing.\n")
+}
+```
+
+# 9. EXPORT RESULTS
+
+# Export summary table to CSV
+
+```{r}
+write.csv(summary_df, "hypothesis_rq1_summary.csv", row.names = FALSE)
+```
+
+# Export all post-hoc results if any
+
+```{r}
+if (length(posthoc_results_list) > 0) {
+  posthoc_combined <- bind_rows(posthoc_results_list, .id = "dataset")
+  write.csv(posthoc_combined, "hypothesis_rq1_posthoc.csv", row.names = FALSE)
+  cat("\nPost-hoc results exported to: hypothesis_rq1_posthoc.csv\n")
+}
+```

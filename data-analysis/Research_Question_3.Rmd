@@ -1,0 +1,553 @@
+# Load libraries
+
+```{r}
+library(tidyverse)
+library(rstatix)
+library(ARTool)
+library(ggplot2)
+library(ggpubr)
+```
+
+# Read and prepare data
+
+```{r}
+data_raw <- read.csv("../experiment-results/run_table.csv")
+df <- subset(data_raw, total_requests >= 15000)
+```
+
+# Convert memory from GB to MB and ensure factors are properly set
+
+```{r}
+df$mean_memory_mb <- df$mean_memory_gb * 1000
+df$database <- factor(df$database)
+df$model <- factor(df$model)
+```
+
+```{r}
+cat("\n=== DATA SUMMARY RQ3 ===\n")
+cat("Total observations:", nrow(df), "\n")
+cat("Datasets:", levels(df$database), "\n")
+cat("Models:", levels(df$model), "\n")
+cat("\nObservations per dataset:\n")
+print(table(df$database))
+cat("\nObservations per model:\n")
+print(table(df$model))
+```
+
+# Define resource metrics to analyze
+
+```{r}
+resource_metrics <- c("mean_cpu_percent", "mean_memory_mb")
+metric_names <- c("CPU Usage (%)", "Memory Usage (MB)")
+
+cat("\nAvailable resource metrics:\n")
+cat("- mean_cpu_percent\n")
+cat("- mean_memory_mb\n")
+```
+
+# 2. NORMALITY TESTS FOR RESOURCE METRICS
+
+```{r}
+cat("\n=== NORMALITY TESTS ===\n")
+```
+
+# Test normality for each resource metric
+
+```{r}
+for (i in 1:length(resource_metrics)) {
+  metric <- resource_metrics[i]
+  metric_name <- metric_names[i]
+  
+  cat("\n", rep("-", 70), "\n", sep="")
+  cat("RESOURCE METRIC:", metric_name, "\n")
+  cat(rep("-", 70), "\n", sep="")
+  
+  # Shapiro-Wilk test for each group
+  normality_results <- df %>%
+    group_by(model, database) %>%
+    shapiro_test(!!sym(metric))
+  
+  print(normality_results)
+  
+  # Summary
+  normality_summary <- normality_results %>%
+    group_by(database) %>%
+    summarise(
+      total_groups = n(),
+      normal_groups = sum(p > 0.05),
+      non_normal_groups = sum(p <= 0.05)
+    )
+  
+  cat("\nNormality Summary by Dataset:\n")
+  print(normality_summary)
+}
+```
+
+# 3. DESCRIPTIVE STATISTICS FOR RESOURCE METRICS
+
+```{r}
+cat("\n\n=== DESCRIPTIVE STATISTICS ===\n")
+```
+
+```{r}
+for (i in 1:length(resource_metrics)) {
+  metric <- resource_metrics[i]
+  metric_name <- metric_names[i]
+  
+  cat("\n", rep("=", 70), "\n", sep="")
+  cat("RESOURCE METRIC:", metric_name, "\n")
+  cat(rep("=", 70), "\n", sep="")
+  
+  # Detailed stats for each model-dataset combination
+  descriptive_stats <- df %>%
+    group_by(database, model) %>%
+    get_summary_stats(!!sym(metric), type = "common")
+  
+  print(descriptive_stats)
+  
+  # Summary by dataset only
+  stats_by_dataset <- df %>%
+    group_by(database) %>%
+    get_summary_stats(!!sym(metric), type = "common")
+  
+  cat("\nOverall by Dataset:\n")
+  print(stats_by_dataset)
+  
+  # Summary by model only
+  stats_by_model <- df %>%
+    group_by(model) %>%
+    get_summary_stats(!!sym(metric), type = "common")
+  
+  cat("\nOverall by Model:\n")
+  print(stats_by_model)
+}
+```
+
+# 4. HYPOTHESIS RQ3: KRUSKAL-WALLIS TESTS PER DATASET AND METRIC
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("HYPOTHESIS RQ3 TESTING\n")
+cat(rep("=", 70), "\n", sep="")
+cat("H0: μ_alg1,ds,r = μ_alg2,ds,r = μ_alg3,ds,r\n")
+cat("    for each dataset ds and resource metric r\n")
+cat("Testing algorithm differences within each dataset-metric combination\n\n")
+```
+
+# Get unique datasets and apply Bonferroni correction
+
+```{r}
+datasets <- unique(df$database)
+
+# Total number of tests: datasets × metrics
+n_tests <- length(datasets) * length(resource_metrics)
+alpha_corrected <- 0.05 / n_tests
+
+cat("Number of datasets:", length(datasets), "\n")
+cat("Number of resource metrics:", length(resource_metrics), "\n")
+cat("Total number of tests:", n_tests, "\n")
+cat("Original alpha: 0.05\n")
+cat("Bonferroni-corrected alpha:", alpha_corrected, "\n\n")
+```
+
+# Storage for results
+
+```{r}
+all_results <- list()
+result_counter <- 1
+```
+
+# Perform Kruskal-Wallis tests for each dataset-metric combination
+
+```{r}
+for (i in 1:length(resource_metrics)) {
+  metric <- resource_metrics[i]
+  metric_name <- metric_names[i]
+  
+  cat("\n", rep("#", 70), "\n", sep="")
+  cat("ANALYZING RESOURCE METRIC:", metric_name, "\n")
+  cat(rep("#", 70), "\n", sep="")
+  
+  # Loop through each dataset
+  for (ds in datasets) {
+    cat("\n", rep("=", 70), "\n", sep="")
+    cat("DATASET:", as.character(ds), "| METRIC:", metric_name, "\n")
+    cat(rep("=", 70), "\n", sep="")
+    
+    # Subset data for this dataset
+    df_subset <- df %>% filter(database == ds)
+    
+    # Descriptive stats for this dataset-metric combination
+    cat("\nDescriptive Statistics:\n")
+    desc_stats <- df_subset %>%
+      group_by(model) %>%
+      get_summary_stats(!!sym(metric), type = "common")
+    print(desc_stats)
+    
+    # Kruskal-Wallis test
+    formula_str <- paste(metric, "~ model")
+    kw_test <- kruskal.test(as.formula(formula_str), data = df_subset)
+    
+    cat("\nKruskal-Wallis Test:\n")
+    cat("H statistic:", round(kw_test$statistic, 3), "\n")
+    cat("p-value:", format.pval(kw_test$p.value, digits = 4), "\n")
+    cat("Significant at α =", alpha_corrected, "?", 
+        ifelse(kw_test$p.value < alpha_corrected, "YES ***", "NO"), "\n")
+    
+    # Effect size
+    effect_size <- kruskal_effsize(df_subset, as.formula(formula_str))
+    cat("Effect size (epsilon-squared):", round(effect_size$effsize, 3), "\n")
+    cat("Effect magnitude:", effect_size$magnitude, "\n")
+    
+    # Store results
+    all_results[[result_counter]] <- list(
+      dataset = as.character(ds),
+      metric = metric_name,
+      metric_var = metric,
+      statistic = kw_test$statistic,
+      p_value = kw_test$p.value,
+      significant = kw_test$p.value < alpha_corrected,
+      effect_size = effect_size$effsize,
+      magnitude = effect_size$magnitude
+    )
+    
+    # Post-hoc tests if significant
+    if (kw_test$p.value < alpha_corrected) {
+      cat("\n*** Significant difference detected ***\n")
+      cat("Performing post-hoc pairwise comparisons (Dunn's test):\n\n")
+      
+      dunn_results <- dunn_test(df_subset, as.formula(formula_str), 
+                                p.adjust.method = "bonferroni")
+      print(dunn_results)
+      
+      all_results[[result_counter]]$posthoc <- dunn_results
+      
+      # Interpretation
+      cat("\nInterpretation:\n")
+      sig_comparisons <- dunn_results %>% filter(p.adj < 0.05)
+      if (nrow(sig_comparisons) > 0) {
+        for (j in 1:nrow(sig_comparisons)) {
+          cat("  -", sig_comparisons$group1[j], "vs", sig_comparisons$group2[j], 
+              ": p =", format.pval(sig_comparisons$p.adj[j], digits = 3), 
+              sig_comparisons$p.adj.signif[j], "\n")
+        }
+      }
+    } else {
+      cat("\n*** No significant difference detected ***\n")
+      cat("Post-hoc tests not performed.\n")
+    }
+    
+    result_counter <- result_counter + 1
+  }
+}
+```
+
+# 5. COMPREHENSIVE SUMMARY TABLE
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("COMPREHENSIVE SUMMARY TABLE: HYPOTHESIS RQ3 RESULTS\n")
+cat(rep("=", 70), "\n\n")
+```
+
+# Create summary dataframe
+
+```{r}
+summary_df <- do.call(rbind, lapply(all_results, function(x) {
+  data.frame(
+    Dataset = x$dataset,
+    Metric = x$metric,
+    H_statistic = round(x$statistic, 3),
+    p_value = format.pval(x$p_value, digits = 4),
+    Significant = ifelse(x$significant, "YES", "NO"),
+    Effect_Size = round(x$effect_size, 3),
+    Magnitude = x$magnitude
+  )
+}))
+
+print(summary_df, row.names = FALSE)
+```
+
+# Summary statistics
+
+```{r}
+n_significant <- sum(summary_df$Significant == "YES")
+total_tests <- nrow(summary_df)
+
+cat("\n")
+cat("Significant results:", n_significant, "out of", total_tests, "tests\n")
+cat("Bonferroni-corrected significance level:", alpha_corrected, "\n")
+
+# Break down by metric
+cat("\nResults by Resource Metric:\n")
+for (metric_name in metric_names) {
+  subset_results <- summary_df %>% filter(Metric == metric_name)
+  n_sig <- sum(subset_results$Significant == "YES")
+  n_total <- nrow(subset_results)
+  cat(sprintf("  %s: %d/%d datasets significant\n", metric_name, n_sig, n_total))
+}
+```
+
+# 6. INTERACTION EFFECTS (EXPLORATORY)
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("EXPLORATORY ANALYSIS: INTERACTION EFFECTS\n")
+cat(rep("=", 70), "\n", sep="")
+```
+
+```{r}
+for (i in 1:length(resource_metrics)) {
+  metric <- resource_metrics[i]
+  metric_name <- metric_names[i]
+  
+  cat("\n", rep("-", 70), "\n", sep="")
+  cat("RESOURCE METRIC:", metric_name, "\n")
+  cat(rep("-", 70), "\n", sep="")
+  cat("Testing if algorithm performance varies across datasets\n\n")
+  
+  # ART ANOVA
+  formula_str <- paste(metric, "~ model * database")
+  art_model <- art(as.formula(formula_str), data = df)
+  art_anova <- anova(art_model)
+  
+  cat("ART-ANOVA Results:\n")
+  print(art_anova)
+  
+  if (art_anova$`Pr(>F)`[3] < 0.05) {
+    cat("\n*** Significant interaction detected (p < 0.05) ***\n")
+    cat("Algorithm performance for", metric_name, "depends on the dataset.\n")
+  } else {
+    cat("\n*** No significant interaction detected ***\n")
+    cat("Algorithm ranking for", metric_name, "is consistent across datasets.\n")
+  }
+}
+```
+
+# 7. VISUALIZATION FOR RESOURCE METRICS
+
+# Create visualizations for each resource metric
+
+```{r}
+cat("\n\n=== GENERATING VISUALIZATIONS ===\n")
+```
+
+```{r}
+for (i in 1:length(resource_metrics)) {
+  metric <- resource_metrics[i]
+  metric_name <- metric_names[i]
+  
+  cat("\nGenerating plots for:", metric_name, "\n")
+  
+  # 1. Faceted box plots by dataset
+  p1 <- ggplot(df, aes(x = model, y = !!sym(metric), fill = model)) +
+    geom_boxplot() +
+    facet_wrap(~database, scales = "free_y") +
+    labs(title = paste(metric_name, "by Model for Each Dataset"),
+         subtitle = "Testing H0: No algorithm differences within each dataset",
+         x = "Model", y = metric_name) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "bottom")
+  
+  # 2. Interaction plot with significance
+  summary_stats <- df %>%
+    group_by(database, model) %>%
+    summarise(
+      median = median(!!sym(metric)),
+      mean = mean(!!sym(metric)),
+      se = sd(!!sym(metric)) / sqrt(n()),
+      .groups = "drop"
+    )
+  
+  # Add significance indicators
+  summary_stats$significant <- NA
+  for (ds in datasets) {
+    # Find result for this dataset and metric
+    result <- all_results[[which(sapply(all_results, function(x) 
+      x$dataset == as.character(ds) && x$metric == metric_name))]]
+    
+    if (result$significant) {
+      summary_stats$significant[summary_stats$database == ds] <- "Significant"
+    } else {
+      summary_stats$significant[summary_stats$database == ds] <- "Not Significant"
+    }
+  }
+  
+  p2 <- ggplot(summary_stats, aes(x = database, y = median, 
+                                  color = model, group = model,
+                                  linetype = significant)) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 3) +
+    geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = 0.2) +
+    labs(title = paste("Interaction Plot:", metric_name),
+         subtitle = paste("Bonferroni-corrected α =", round(alpha_corrected, 5)),
+         x = "Dataset", y = paste("Median", metric_name),
+         color = "Model", linetype = "Algorithm Effect") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # 3. Violin plots
+  p3 <- ggplot(df, aes(x = model, y = !!sym(metric), fill = model)) +
+    geom_violin(alpha = 0.6) +
+    geom_boxplot(width = 0.2, alpha = 0.8) +
+    facet_wrap(~database, scales = "free_y", nrow = 2) +
+    labs(title = paste("Distribution of", metric_name),
+         subtitle = "Violin plots with boxplots overlay",
+         x = "Model", y = metric_name) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "none")
+  
+  # 4. Overall comparison by model
+  p4 <- ggplot(df, aes(x = model, y = !!sym(metric), fill = model)) +
+    geom_boxplot() +
+    labs(title = paste(metric_name, "by Model (All Datasets)"),
+         x = "Model", y = metric_name) +
+    theme_minimal() +
+    stat_compare_means(method = "kruskal.test", label.y.npc = 0.95)
+  
+  # Print plots
+  print(p1)
+  print(p2)
+  print(p3)
+  print(p4)
+  
+  # Save plots
+  metric_safe <- gsub("[^A-Za-z0-9]", "_", metric)
+  ggsave(paste0("plot_", metric_safe, "_faceted_by_dataset.png"), p1, 
+         width = 12, height = 8)
+  ggsave(paste0("plot_", metric_safe, "_interaction.png"), p2, 
+         width = 10, height = 6)
+  ggsave(paste0("plot_", metric_safe, "_violin.png"), p3, 
+         width = 12, height = 8)
+  ggsave(paste0("plot_", metric_safe, "_overall.png"), p4, 
+         width = 8, height = 6)
+}
+```
+
+# Combined comparison plot (both metrics)
+
+```{r}
+df_long <- df %>%
+  select(database, model, mean_cpu_percent, mean_memory_mb) %>%
+  pivot_longer(cols = c(mean_cpu_percent, mean_memory_mb),
+               names_to = "metric",
+               values_to = "value") %>%
+  mutate(metric = case_when(
+    metric == "mean_cpu_percent" ~ "CPU Usage (%)",
+    metric == "mean_memory_mb" ~ "Memory Usage (MB)",
+    TRUE ~ metric
+  ))
+
+p_combined <- ggplot(df_long, aes(x = model, y = value, fill = model)) +
+  geom_boxplot() +
+  facet_grid(metric ~ database, scales = "free_y") +
+  labs(title = "Resource Usage by Model and Dataset",
+       x = "Model", y = "Value") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+
+print(p_combined)
+ggsave("plot_resource_usage_combined.png", p_combined, width = 14, height = 10)
+```
+
+# 8. HYPOTHESIS RQ3 CONCLUSION
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("HYPOTHESIS RQ3: CONCLUSION\n")
+cat(rep("=", 70), "\n\n")
+
+cat("Null Hypothesis (H0):\n")
+cat("  For each dataset ds and resource metric r,\n")
+cat("  μ_alg1,ds,r = μ_alg2,ds,r = μ_alg3,ds,r\n")
+cat("  (No algorithm differences within any dataset for any resource metric)\n\n")
+
+cat("Alternative Hypothesis (H1):\n")
+cat("  There exists at least one dataset and one resource metric\n")
+cat("  where algorithms differ significantly\n\n")
+
+cat("Results by Dataset and Metric:\n")
+cat("-------------------------------\n")
+
+for (result in all_results) {
+  cat(sprintf("%-30s | %-20s: H = %6.3f, p = %s, ε² = %.3f (%s) - %s\n",
+              result$dataset,
+              result$metric,
+              result$statistic,
+              format.pval(result$p_value, digits = 3),
+              result$effect_size,
+              result$magnitude,
+              ifelse(result$significant, "REJECT H0", "FAIL TO REJECT H0")))
+}
+```
+
+```{r}
+cat("\n\nOverall Conclusion:\n")
+cat("------------------\n")
+
+if (n_significant > 0) {
+  cat("We REJECT the null hypothesis H0.\n\n")
+  cat("Significant algorithm differences were found in", n_significant, 
+      "out of", total_tests, "dataset-metric combinations.\n")
+  
+  # Breakdown by metric
+  cat("\nBreakdown by Resource Metric:\n")
+  for (metric_name in metric_names) {
+    results_for_metric <- summary_df %>% filter(Metric == metric_name)
+    n_sig <- sum(results_for_metric$Significant == "YES")
+    n_total <- nrow(results_for_metric)
+    cat(sprintf("  %s: %d/%d datasets show significant differences\n", 
+                metric_name, n_sig, n_total))
+    
+    # List significant datasets
+    if (n_sig > 0) {
+      sig_datasets <- results_for_metric %>% 
+        filter(Significant == "YES") %>% 
+        pull(Dataset)
+      cat("    Significant datasets:", paste(sig_datasets, collapse = ", "), "\n")
+    }
+  }
+  
+  cat("\nThis provides evidence that algorithm choice affects resource usage,\n")
+  cat("though the effect may vary by dataset and resource type.\n")
+  
+} else {
+  cat("We FAIL TO REJECT the null hypothesis H0.\n\n")
+  cat("No significant algorithm differences were found in any dataset-metric\n")
+  cat("combination after Bonferroni correction (α =", alpha_corrected, ").\n")
+}
+```
+
+# 9. EXPORT RESULTS RQ3
+
+# Export summary table to CSV
+
+```{r}
+write.csv(summary_df, "hypothesis_rq3_summary.csv", row.names = FALSE)
+cat("\n\nSummary table exported to: hypothesis_rq3_summary.csv\n")
+```
+
+# Export all post-hoc results if any
+
+```{r}
+posthoc_list <- list()
+for (result in all_results) {
+  if (!is.null(result$posthoc)) {
+    posthoc_df <- result$posthoc
+    posthoc_df$dataset <- result$dataset
+    posthoc_df$metric <- result$metric
+    posthoc_list[[length(posthoc_list) + 1]] <- posthoc_df
+  }
+}
+
+if (length(posthoc_list) > 0) {
+  posthoc_combined <- bind_rows(posthoc_list)
+  write.csv(posthoc_combined, "hypothesis_rq3_posthoc.csv", row.names = FALSE)
+  cat("Post-hoc results exported to: hypothesis_rq3_posthoc.csv\n")
+}
+
+cat("\n=== ANALYSIS COMPLETE ===\n")
+```

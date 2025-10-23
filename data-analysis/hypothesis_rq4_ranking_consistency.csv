@@ -1,0 +1,13 @@
+"metric","model","mean_rank","sd_rank","min_rank","max_rank","rank_range"
+"energy_j","catboost",1,0,1,1,0
+"energy_j","lgbm",2,0,2,2,0
+"energy_j","xgboost",3,0,3,3,0
+"mean_cpu_percent","catboost",1,0,1,1,0
+"mean_cpu_percent","lgbm",2,0,2,2,0
+"mean_cpu_percent","xgboost",3,0,3,3,0
+"mean_latency_ms","catboost",1,0,1,1,0
+"mean_latency_ms","lgbm",2,0,2,2,0
+"mean_latency_ms","xgboost",3,0,3,3,0
+"mean_memory_mb","catboost",1,0,1,1,0
+"mean_memory_mb","lgbm",2,0,2,2,0
+"mean_memory_mb","xgboost",3,0,3,3,0

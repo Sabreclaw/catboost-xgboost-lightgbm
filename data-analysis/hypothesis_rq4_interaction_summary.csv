@@ -1,0 +1,5 @@
+"Metric","F_Value","P_Value","Significant","Effect_Size"
+"energy_j",197.311,"< 2.2e-16","YES",0.314
+"mean_latency_ms",211.851,"< 2.2e-16","YES",0.313
+"mean_cpu_percent",191.707,"< 2.2e-16","YES",0.374
+"mean_memory_mb",38.189,"< 2.2e-16","YES",0.155

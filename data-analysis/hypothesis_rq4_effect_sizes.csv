@@ -1,0 +1,5 @@
+"Metric","F_Value","P_Value","Significant","Effect_Size","Interaction_Strength","Practical_Importance"
+"energy_j",197.311,"< 2.2e-16","YES",0.314,"Large","High - Context-dependent optimization needed"
+"mean_latency_ms",211.851,"< 2.2e-16","YES",0.313,"Large","High - Context-dependent optimization needed"
+"mean_cpu_percent",191.707,"< 2.2e-16","YES",0.374,"Large","High - Context-dependent optimization needed"
+"mean_memory_mb",38.189,"< 2.2e-16","YES",0.155,"Large","High - Context-dependent optimization needed"

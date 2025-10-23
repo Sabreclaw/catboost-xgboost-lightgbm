@@ -1,0 +1,5 @@
+"Dataset","H_statistic","p_value","Significant","Effect_Size","Magnitude"
+"credit_card_transactions",72.713,"< 2.2e-16","YES",0.813,"large"
+"diabetic",79.121,"< 2.2e-16","YES",0.886,"large"
+"healthcare-dataset-stroke",63.132,"1.955e-14","YES",0.703,"large"
+"UNSW_NB15_merged",79.121,"< 2.2e-16","YES",0.886,"large"

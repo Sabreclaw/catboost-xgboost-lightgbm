@@ -1,0 +1,615 @@
+# Load libraries
+
+```{r}
+library(tidyverse)
+library(rstatix)
+library(ARTool)
+library(ggplot2)
+library(ggpubr)
+library(broom)
+library(kableExtra)
+library(emmeans)
+```
+
+# Read and prepare data
+
+```{r}
+data_raw <- read.csv("../experiment-results/run_table.csv")
+data <- subset(data_raw, total_requests >= 15000)
+```
+
+# Convert memory from GB to MB and ensure factors are properly set
+
+```{r}
+data$mean_memory_mb <- data$mean_memory_gb * 1000
+data$database <- factor(data$database)
+data$model <- factor(data$model)
+```
+
+# Create combined dataset for interaction analysis
+
+```{r}
+combined_data <- data %>%
+  select(database, model, energy_j, mean_latency_ms, mean_cpu_percent, mean_memory_mb) %>%
+  mutate(
+    database = as.factor(database),
+    model = as.factor(model)
+  )
+
+cat("\n=== DATA SUMMARY RQ4 ===\n")
+cat("Dataset Summary:\n")
+cat("Total observations:", nrow(combined_data), "\n")
+cat("Datasets:", paste(levels(combined_data$database), collapse = ", "), "\n")
+cat("Algorithms:", paste(levels(combined_data$model), collapse = ", "), "\n")
+cat("Observations per group:", nrow(combined_data) / (nlevels(combined_data$database) * nlevels(combined_data$model)), "\n")
+```
+
+# 2. NORMALITY TESTS FOR INTERACTION ANALYSIS
+
+```{r}
+cat("\n=== NORMALITY TESTS ===\n")
+```
+
+# Check normality for each metric-dataset combination
+
+```{r}
+normality_results <- combined_data %>%
+  pivot_longer(
+    cols = c(energy_j, mean_latency_ms, mean_cpu_percent, mean_memory_mb),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  group_by(metric, database, model) %>%
+  shapiro_test(value) %>%
+  mutate(normal = p > 0.05)
+
+# Summary of normality violations
+normality_summary <- normality_results %>%
+  group_by(metric, database) %>%
+  summarise(
+    total_groups = n(),
+    normal_groups = sum(normal),
+    non_normal_groups = sum(!normal),
+    .groups = "drop"
+  )
+
+print(normality_summary)
+```
+
+# 3. DESCRIPTIVE STATISTICS FOR ALL METRICS
+
+```{r}
+cat("\n=== DESCRIPTIVE STATISTICS ===\n")
+```
+
+# Generate comprehensive descriptive statistics
+
+```{r}
+descriptive_stats <- combined_data %>%
+  pivot_longer(
+    cols = c(energy_j, mean_latency_ms, mean_cpu_percent, mean_memory_mb),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  group_by(metric, database, model) %>%
+  get_summary_stats(value, type = "common") %>%
+  mutate(across(where(is.numeric), round, 3))
+
+print(descriptive_stats)
+```
+
+# 4. HYPOTHESIS RQ4: ART ANOVA FOR INTERACTION EFFECTS
+
+```{r}
+cat("\n", rep("=", 70), "\n", sep="")
+cat("HYPOTHESIS RQ4 TESTING: ALGORITHM-DATASET INTERACTIONS\n")
+cat(rep("=", 70), "\n", sep="")
+cat("H0: Algorithm performance differences are consistent across all datasets\n")
+cat("H1: Algorithm performance patterns vary depending on dataset characteristics\n\n")
+```
+
+# Define metrics to analyze
+
+```{r}
+metrics <- c("energy_j", "mean_latency_ms", "mean_cpu_percent", "mean_memory_mb")
+metric_names <- c("Energy (J)", "Execution Time (ms)", "CPU Usage (%)", "Memory Usage (MB)")
+```
+
+# Apply Bonferroni correction for multiple tests
+
+```{r}
+n_tests_rq4 <- length(metrics)
+alpha_corrected_rq4 <- 0.05 / n_tests_rq4
+
+cat("Number of metrics tested:", n_tests_rq4, "\n")
+cat("Original alpha: 0.05\n")
+cat("Bonferroni-corrected alpha:", alpha_corrected_rq4, "\n\n")
+```
+
+# Function to perform ART ANOVA for a given metric
+
+```{r}
+perform_art_anova <- function(data, metric_name) {
+  formula <- as.formula(paste(metric_name, "~ model * database"))
+  art_model <- art(formula, data = data)
+  art_anova <- anova(art_model)
+  
+  return(list(
+    metric = metric_name,
+    art_model = art_model,
+    anova = art_anova,
+    interaction_p = art_anova$`Pr(>F)`[3]
+  ))
+}
+```
+
+# Perform ART ANOVA for all metrics
+
+```{r}
+art_results <- list()
+
+for (i in 1:length(metrics)) {
+  metric <- metrics[i]
+  metric_name <- metric_names[i]
+  
+  cat("\n", rep("=", 70), "\n", sep="")
+  cat("ANALYZING METRIC:", metric_name, "\n")
+  cat(rep("=", 70), "\n", sep="")
+  
+  art_results[[metric]] <- perform_art_anova(combined_data, metric)
+  
+  # Display results
+  cat("\nART ANOVA Results:\n")
+  print(art_results[[metric]]$anova)
+  
+  # Interpretation
+  interaction_p <- art_results[[metric]]$interaction_p
+  cat("\nInteraction p-value:", format.pval(interaction_p, digits = 4), "\n")
+  cat("Significant at α =", alpha_corrected_rq4, "?", 
+      ifelse(interaction_p < alpha_corrected_rq4, "YES ***", "NO"), "\n")
+  
+  if (interaction_p < alpha_corrected_rq4) {
+    cat("\n*** Significant interaction detected ***\n")
+    cat("Algorithm performance for", metric_name, "depends on the dataset.\n")
+    cat("Optimal algorithm choice is dataset-specific for this metric.\n")
+  } else {
+    cat("\n*** No significant interaction detected ***\n")
+    cat("Algorithm ranking for", metric_name, "is consistent across datasets.\n")
+  }
+}
+```
+
+# 5. COMPREHENSIVE SUMMARY TABLE
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("COMPREHENSIVE SUMMARY TABLE: HYPOTHESIS RQ4 RESULTS\n")
+cat(rep("=", 70), "\n\n")
+```
+
+# Create interaction summary table
+
+```{r}
+interaction_summary <- map_dfr(art_results, function(result) {
+  data.frame(
+    Metric = result$metric,
+    F_Value = round(result$anova$`F value`[3], 3),
+    P_Value = format.pval(result$anova$`Pr(>F)`[3], digits = 4),
+    Significant = ifelse(result$anova$`Pr(>F)`[3] < alpha_corrected_rq4, "YES", "NO"),
+    Effect_Size = round(result$anova$`Sum Sq`[3] / sum(result$anova$`Sum Sq`), 3)
+  )
+})
+
+print(interaction_summary)
+```
+
+# Count significant results
+
+```{r}
+n_significant_rq4 <- sum(interaction_summary$Significant == "YES")
+
+cat("\n")
+cat("Metrics with significant algorithm-dataset interactions:", n_significant_rq4, "out of", n_tests_rq4, "\n")
+cat("Bonferroni-corrected significance level:", alpha_corrected_rq4, "\n")
+```
+
+# 6. INTERACTION PLOTS FOR ALL METRICS
+
+```{r}
+cat("\n\n=== GENERATING INTERACTION PLOTS ===\n")
+```
+
+# Function to create interaction plots
+
+```{r}
+create_interaction_plot <- function(data, metric, title, significant) {
+  summary_data <- data %>%
+    group_by(database, model) %>%
+    summarise(
+      mean_value = mean(.data[[metric]]),
+      se = sd(.data[[metric]]) / sqrt(n()),
+      .groups = "drop"
+    )
+  
+  subtitle <- ifelse(significant, 
+                    "*** Significant Interaction Detected ***",
+                    "No Significant Interaction")
+  
+  ggplot(summary_data, aes(x = database, y = mean_value, color = model, group = model)) +
+    geom_line(linewidth = 1.2) +
+    geom_point(size = 3) +
+    geom_errorbar(aes(ymin = mean_value - se, ymax = mean_value + se), width = 0.2) +
+    labs(
+      title = paste("Interaction Plot:", title),
+      subtitle = subtitle,
+      x = "Dataset",
+      y = paste("Mean", title),
+      color = "Algorithm"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      legend.position = "bottom"
+    )
+}
+```
+
+# Generate and display plots for all metrics
+
+```{r}
+plots_list <- list()
+
+for (i in 1:length(metrics)) {
+  metric <- metrics[i]
+  metric_name <- metric_names[i]
+  is_significant <- interaction_summary$Significant[i] == "YES"
+  
+  plots_list[[i]] <- create_interaction_plot(combined_data, metric, metric_name, is_significant)
+  print(plots_list[[i]])
+  
+  # Save plot
+  metric_safe <- gsub("[^A-Za-z0-9]", "_", metric)
+  ggsave(paste0("plot_rq4_interaction_", metric_safe, ".png"), 
+         plots_list[[i]], width = 10, height = 6)
+}
+```
+
+# 7. SIMPLE EFFECTS ANALYSIS (FOR SIGNIFICANT INTERACTIONS)
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("SIMPLE EFFECTS ANALYSIS FOR METRICS WITH SIGNIFICANT INTERACTIONS\n")
+cat(rep("=", 70), "\n", sep="")
+```
+
+# Function for simple effects analysis
+
+```{r}
+perform_simple_effects <- function(data, metric) {
+  simple_effects <- data %>%
+    group_by(database) %>%
+    group_modify(~ {
+      kw_result <- kruskal.test(as.formula(paste(metric, "~ model")), data = .x)
+      effect_size <- kruskal_effsize(as.formula(paste(metric, "~ model")), data = .x)
+      data.frame(
+        H_Statistic = round(kw_result$statistic, 3),
+        P_Value = format.pval(kw_result$p.value, digits = 4),
+        Effect_Size = round(effect_size$effsize, 3),
+        Magnitude = effect_size$magnitude,
+        Significant = ifelse(kw_result$p.value < alpha_corrected_rq4, "YES", "NO")
+      )
+    })
+  
+  return(simple_effects)
+}
+```
+
+# Perform simple effects for significant metrics
+
+```{r}
+significant_metrics <- interaction_summary %>%
+  filter(Significant == "YES") %>%
+  pull(Metric)
+
+if (length(significant_metrics) > 0) {
+  for (metric in significant_metrics) {
+    cat("\n", rep("-", 70), "\n", sep="")
+    cat("Metric:", metric, "\n")
+    cat(rep("-", 70), "\n", sep="")
+    
+    simple_effects <- perform_simple_effects(combined_data, metric)
+    print(simple_effects)
+    
+    # Pairwise comparisons within each dataset
+    cat("\nPairwise Comparisons within Each Dataset:\n")
+    pairwise_results <- combined_data %>%
+      group_by(database) %>%
+      pairwise_wilcox_test(as.formula(paste(metric, "~ model")), 
+                          p.adjust.method = "bonferroni") %>%
+      filter(p.adj < 0.05) %>%
+      select(database, group1, group2, p.adj, p.adj.signif)
+    
+    if (nrow(pairwise_results) > 0) {
+      print(pairwise_results)
+    } else {
+      cat("No significant pairwise differences after correction.\n")
+    }
+  }
+} else {
+  cat("No significant interactions detected - simple effects analysis not required.\n")
+}
+```
+
+# 8. ALGORITHM RANKING ANALYSIS ACROSS DATASETS
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("ALGORITHM RANKING ANALYSIS\n")
+cat(rep("=", 70), "\n", sep="")
+```
+
+# Analyze algorithm rankings across datasets
+
+```{r}
+ranking_analysis <- combined_data %>%
+  pivot_longer(
+    cols = c(energy_j, mean_latency_ms, mean_cpu_percent, mean_memory_mb),
+    names_to = "metric",
+    values_to = "value"
+  ) %>%
+  group_by(metric, database, model) %>%
+  summarise(
+    median_value = median(value),
+    mean_value = mean(value),
+    .groups = "drop"
+  ) %>%
+  group_by(metric, database) %>%
+  mutate(
+    algorithm_rank = rank(median_value)  # Rank 1 = best (lowest value)
+  ) %>%
+  arrange(metric, database, algorithm_rank)
+
+print(ranking_analysis)
+```
+
+# Ranking consistency check
+
+```{r}
+ranking_consistency <- ranking_analysis %>%
+  group_by(metric, model) %>%
+  summarise(
+    mean_rank = mean(algorithm_rank),
+    sd_rank = sd(algorithm_rank),
+    min_rank = min(algorithm_rank),
+    max_rank = max(algorithm_rank),
+    rank_range = max_rank - min_rank,
+    .groups = "drop"
+  ) %>%
+  arrange(metric, mean_rank)
+
+cat("\nRanking Consistency Summary:\n")
+cat("(Lower rank_range indicates more consistent performance across datasets)\n\n")
+print(ranking_consistency)
+```
+
+# 9. RANKING HEATMAP VISUALIZATION
+
+```{r}
+cat("\n=== GENERATING RANKING HEATMAP ===\n")
+```
+
+# Create ranking heatmap
+
+```{r}
+ranking_heatmap <- ranking_analysis %>%
+  mutate(metric_name = case_when(
+    metric == "energy_j" ~ "Energy (J)",
+    metric == "mean_latency_ms" ~ "Execution Time (ms)",
+    metric == "mean_cpu_percent" ~ "CPU Usage (%)",
+    metric == "mean_memory_mb" ~ "Memory Usage (MB)"
+  )) %>%
+  ggplot(aes(x = database, y = model, fill = algorithm_rank)) +
+  geom_tile(color = "white", size = 1) +
+  geom_text(aes(label = algorithm_rank), color = "white", size = 6, fontface = "bold") +
+  scale_fill_gradient(low = "#1a9850", high = "#d73027", name = "Rank\n(1 = Best)") +
+  facet_wrap(~metric_name, scales = "free", ncol = 2) +
+  labs(
+    title = "Algorithm Rankings Across Datasets and Metrics",
+    subtitle = "Rank 1 indicates best performance (lowest energy/time/usage)",
+    x = "Dataset",
+    y = "Algorithm"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "bottom"
+  )
+
+print(ranking_heatmap)
+ggsave("plot_rq4_ranking_heatmap.png", ranking_heatmap, width = 12, height = 10)
+```
+
+# 10. EFFECT SIZE INTERPRETATION
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("EFFECT SIZE INTERPRETATION\n")
+cat(rep("=", 70), "\n\n")
+```
+
+# Calculate and interpret effect sizes
+
+```{r}
+effect_size_interpretation <- interaction_summary %>%
+  mutate(
+    Interaction_Strength = case_when(
+      Effect_Size >= 0.14 ~ "Large",
+      Effect_Size >= 0.06 ~ "Medium", 
+      Effect_Size >= 0.01 ~ "Small",
+      TRUE ~ "Negligible"
+    ),
+    Practical_Importance = case_when(
+      Significant == "YES" & Effect_Size >= 0.06 ~ "High - Context-dependent optimization needed",
+      Significant == "YES" & Effect_Size < 0.06 ~ "Moderate - Minor adjustments may help",
+      Significant == "NO" ~ "Low - Universal recommendations possible"
+    )
+  )
+
+print(effect_size_interpretation)
+```
+
+# 11. CROSS-METRIC ANALYSIS
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("CROSS-METRIC INTERACTION PATTERN SUMMARY\n")
+cat(rep("=", 70), "\n\n")
+```
+
+# Analyze consistency of interaction patterns across metrics
+
+```{r}
+interaction_patterns <- art_results %>%
+  map_dfr(function(result) {
+    data.frame(
+      Metric = result$metric,
+      Interaction_F = round(result$anova$`F value`[3], 3),
+      Interaction_p = result$anova$`Pr(>F)`[3]
+    )
+  }) %>%
+  mutate(
+    Significance_Level = case_when(
+      Interaction_p < 0.001 ~ "***",
+      Interaction_p < 0.01 ~ "**",
+      Interaction_p < alpha_corrected_rq4 ~ "*",
+      TRUE ~ "ns"
+    )
+  )
+
+print(interaction_patterns)
+```
+
+# 12. HYPOTHESIS RQ4 CONCLUSION
+
+```{r}
+cat("\n\n", rep("=", 70), "\n", sep="")
+cat("HYPOTHESIS RQ4: CONCLUSION\n")
+cat(rep("=", 70), "\n\n")
+```
+
+# Formal hypothesis decision
+
+```{r}
+hypothesis_decision <- list(
+  null_hypothesis = "Algorithm performance differences are consistent across all datasets (no interaction)",
+  alternative_hypothesis = "Algorithm performance patterns vary depending on dataset characteristics (significant interaction)",
+  test_method = paste0("ART ANOVA with Bonferroni correction (α = ", alpha_corrected_rq4, ")"),
+  metrics_tested = length(metrics),
+  significant_interactions = n_significant_rq4,
+  decision = ifelse(
+    n_significant_rq4 > 0,
+    "REJECT the null hypothesis - Significant algorithm-dataset interactions exist",
+    "FAIL TO REJECT the null hypothesis - No significant interactions detected"
+  )
+)
+
+cat("Null Hypothesis (H₀):", hypothesis_decision$null_hypothesis, "\n\n")
+cat("Alternative Hypothesis (H₁):", hypothesis_decision$alternative_hypothesis, "\n\n")
+cat("Statistical Method:", hypothesis_decision$test_method, "\n")
+cat("Metrics Tested:", hypothesis_decision$metrics_tested, "\n")
+cat("Significant Interactions Found:", hypothesis_decision$significant_interactions, "\n\n")
+cat("DECISION:", hypothesis_decision$decision, "\n")
+```
+
+# Key findings and implications
+
+```{r}
+key_findings <- list()
+
+if (n_significant_rq4 > 0) {
+  key_findings$primary <- "Dataset context matters for algorithm performance optimization"
+  key_findings$implication <- "Algorithm selection should consider dataset characteristics"
+  key_findings$recommendation <- "Perform dataset-specific profiling for optimal performance"
+  
+  # Identify which metrics show strongest interactions
+  strong_interactions <- effect_size_interpretation %>%
+    filter(Significant == "YES", Effect_Size >= 0.06) %>%
+    pull(Metric)
+  
+  if (length(strong_interactions) > 0) {
+    key_findings$strong_effects <- paste(
+      "Strongest interactions in:", paste(strong_interactions, collapse = ", ")
+    )
+  } else {
+    key_findings$strong_effects <- "Significant interactions detected, but with small effect sizes"
+  }
+} else {
+  key_findings$primary <- "Algorithm performance patterns are consistent across datasets"
+  key_findings$implication <- "Universal algorithm recommendations are appropriate"
+  key_findings$recommendation <- "Select best-performing algorithm regardless of dataset"
+  key_findings$strong_effects <- "No strong interaction effects detected"
+}
+
+cat("\n\nKEY FINDINGS AND IMPLICATIONS\n")
+cat(rep("=", 70), "\n", sep="")
+cat("Primary Finding:", key_findings$primary, "\n")
+cat("Practical Implication:", key_findings$implication, "\n")
+cat("Recommendation:", key_findings$recommendation, "\n")
+cat(key_findings$strong_effects, "\n")
+```
+
+# Summary by metric
+
+```{r}
+cat("\n\nSummary by Metric:\n")
+cat(rep("-", 70), "\n", sep="")
+
+for (i in 1:length(metrics)) {
+  metric <- metrics[i]
+  metric_name <- metric_names[i]
+  result <- interaction_summary[i, ]
+  
+  cat(sprintf("%-25s: F = %6.3f, p = %s - %s\n",
+              metric_name,
+              result$F_Value,
+              result$P_Value,
+              ifelse(result$Significant == "YES", "SIGNIFICANT INTERACTION", "No interaction")))
+}
+```
+
+# 13. EXPORT RESULTS RQ4
+
+# Export summary tables to CSV
+
+```{r}
+write.csv(interaction_summary, "hypothesis_rq4_interaction_summary.csv", row.names = FALSE)
+write.csv(effect_size_interpretation, "hypothesis_rq4_effect_sizes.csv", row.names = FALSE)
+write.csv(ranking_analysis, "hypothesis_rq4_ranking_analysis.csv", row.names = FALSE)
+write.csv(ranking_consistency, "hypothesis_rq4_ranking_consistency.csv", row.names = FALSE)
+
+cat("\n\nResults exported to:\n")
+cat("- hypothesis_rq4_interaction_summary.csv\n")
+cat("- hypothesis_rq4_effect_sizes.csv\n")
+cat("- hypothesis_rq4_ranking_analysis.csv\n")
+cat("- hypothesis_rq4_ranking_consistency.csv\n")
+```
+
+# Export simple effects results if any
+
+```{r}
+if (length(significant_metrics) > 0) {
+  simple_effects_all <- list()
+  
+  for (metric in significant_metrics) {
+    simple_effects <- perform_simple_effects(combined_data, metric)
+    simple_effects$metric <- metric
+    simple_effects_all[[metric]] <- simple_effects
+  }
+  
+  simple_effects_combined <- bind_rows(simple_effects_all)
+  write.csv(simple_effects_combined, "hypothesis_rq4_simple_effects.csv", row.names = FALSE)
+  cat("- hypothesis_rq4_simple_effects.csv\n")
+}
+
+cat("\n=== ANALYSIS COMPLETE ===\n")
+```
